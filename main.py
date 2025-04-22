@@ -22,6 +22,6 @@ def get_faq(q: str = Query(...)):
     if matches:
         match = matches[0]
         answer = df[df["Question"] == match]["Answer"].values[0]
-        return {"match": match, "answer": answer}
+        return answer
     else:
-        return {"match": None, "answer": "I'm sorry, I couldn't find an answer."}
+        return "I'm sorry, I couldn't find an answer."
