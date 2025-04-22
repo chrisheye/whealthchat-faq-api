@@ -2,4 +2,4 @@ fastapi
 uvicorn
 pandas
 python-Levenshtein
-openai
+openai==0.28.1
