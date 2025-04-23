@@ -5,9 +5,9 @@ from difflib import get_close_matches
 
 app = FastAPI()
 
-# Load the CSV and questions list
 df = pd.read_csv("faq.csv", encoding="utf-8-sig")
-questions = df["Question"].tolist()
+questions = df["Question"].tolist()  # ✅ MUST be up here, above get_faq()
+
 
 @app.get("/faq")
 def get_faq(q: str = Query(...)):
@@ -45,3 +45,4 @@ def get_faq(q: str = Query(...)):
         return response["choices"][0]["message"]["content"].strip()
     except Exception as e:
         return f"An error occurred: {str(e)}"
+
