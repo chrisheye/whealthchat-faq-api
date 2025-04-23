@@ -20,8 +20,8 @@ def get_faq(q: str = Query(...)):
     matched_answer = df[df["Question"] == matched_question]["Answer"].values[0].strip()
     coaching_tip = df[df["Question"] == matched_question]["Coaching Tip"].values[0].strip()
 
-    # If no valid answer, skip GPT entirely
-    if not matched_answer:
+    # Fallback if the answer is missing or just whitespace
+    if not matched_answer.strip():
         return "I'm sorry, I couldn't find a full answer to that question. Try rephrasing or asking something else about financial, estate, or health-related planning."
 
     # Compose prompt
