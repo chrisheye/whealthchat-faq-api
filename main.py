@@ -1,3 +1,11 @@
+from fastapi import FastAPI, Query
+import pandas as pd
+import openai
+from difflib import get_close_matches
+
+app = FastAPI()
+
+
 @app.get("/faq")
 def get_faq(q: str = Query(...)):
     matches = get_close_matches(q, questions, n=1, cutoff=0.4)
