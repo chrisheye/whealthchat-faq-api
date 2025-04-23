@@ -31,7 +31,7 @@ def get_faq(q: str = Query(...)):
 
     matched_question = matches[0]
     matched_answer = df[df["Question"] == matched_question]["Answer"].values[0]
-	coaching_tip = df[df["Question"] == matched_question]["Coaching Tip"].values[0]
+    coaching_tip = df[df["Question"] == matched_question]["Coaching Tip"].values[0]
 
 
     # GPT prompt formatting
