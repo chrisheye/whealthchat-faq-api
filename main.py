@@ -6,14 +6,13 @@ from difflib import get_close_matches
 app = FastAPI()
 
 df = pd.read_csv("faq.csv", encoding="utf-8-sig")
-questions = df["Question"].tolist()  # ✅ MUST be up here, above get_faq()
-
+questions = df["Question"].tolist()
 
 @app.get("/faq")
 def get_faq(q: str = Query(...)):
-    matches = get_close_matches(q, questions, n=1, cutoff=0.4)
+    matches = get_close_matches(q, questions, n=1, cutoff=0.75)
     if not matches:
-        return "I'm sorry, I couldn't find an answer to that question."
+        return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
     matched_question = matches[0]
     matched_answer = df[df["Question"] == matched_question]["Answer"].values[0]
@@ -45,4 +44,3 @@ def get_faq(q: str = Query(...)):
         return response["choices"][0]["message"]["content"].strip()
     except Exception as e:
         return f"An error occurred: {str(e)}"
-
