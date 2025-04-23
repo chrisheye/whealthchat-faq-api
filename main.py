@@ -16,6 +16,15 @@ def get_faq(q: str = Query(...)):
         f"Answer: {matched_answer}\n"
         f"Coaching Tip: {coaching_tip}"
     )
+	
+	print("🧪 DEBUG INFO:")
+print(f"Matched question: {matched_question}")
+print(f"Matched answer: {matched_answer}")
+print(f"Coaching tip: {coaching_tip}")
+print("------ FULL PROMPT ------")
+print(prompt)
+print("-------------------------")
+
 
     try:
         response = openai.ChatCompletion.create(
