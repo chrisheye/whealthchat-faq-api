@@ -25,13 +25,14 @@ def get_faq(q: str = Query(...)):
         f"Coaching Tip: {coaching_tip}"
     )
 	
-print("🧪 DEBUG OUTPUT:")
-print(f"Matched Question: {matched_question}")
-print(f"Matched Answer: {matched_answer}")
-print(f"Coaching Tip: {coaching_tip}")
-print("------ Full Prompt Sent to GPT ------")
-print(prompt)
-print("-------------------------------------")
+    print("🧪 DEBUG INFO:")
+    print(f"Matched Question: {matched_question}")
+    print(f"Matched Answer: {matched_answer}")
+    print(f"Coaching Tip: {coaching_tip}")
+    print("------ Full Prompt Sent to GPT ------")
+    print(prompt)
+    print("-------------------------------------")
+
 
 
 
