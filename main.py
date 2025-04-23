@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Query
 import pandas as pd
 import openai
-from difflib import get_close_matches
+from rapidfuzz import process, fuzz
 
 app = FastAPI()
 
@@ -10,26 +10,27 @@ questions = df["Question"].tolist()
 
 @app.get("/faq")
 def get_faq(q: str = Query(...)):
-    matches = get_close_matches(q, questions, n=1, cutoff=0.75)
-    if not matches:
+    match, score, _ = process.extractOne(q, questions, scorer=fuzz.ratio)
+    if score < 85:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
-    matched_question = matches[0]
+    matched_question = match
     matched_answer = df[df["Question"] == matched_question]["Answer"].values[0]
     coaching_tip = df[df["Question"] == matched_question]["Coaching Tip"].values[0]
 
-prompt = (
-    "You are a helpful assistant. Respond in plain text only. Do not use Markdown, bullets, or HTML.\n\n"
-    f"Always use the provided answer exactly as written. "
-    f"If a coaching tip is included, repeat it at the end under a heading called 'Coaching Tip.'\n\n"
-    f"Question: {q}\n"
-    f"Answer: {matched_answer}\n"
-    f"Coaching Tip: {coaching_tip}"
-)
+    prompt = (
+        "You are a helpful assistant. Respond in plain text only. Do not use Markdown, bullets, or HTML.
 
+" + 
+        f"You are a helpful assistant. Always use the provided answer exactly as written. "
+        f"If a coaching tip is included, repeat it at the end under a heading called 'Coaching Tip.'\n\n"
+        f"Question: {q}\n"
+        f"Answer: {matched_answer}\n"
+        f"Coaching Tip: {coaching_tip}"
+    )
 
     print("\U0001F9EA DEBUG INFO:")
-    print(f"Matched Question: {matched_question}")
+    print(f"Matched Question: {matched_question} (Score: {score})")
     print(f"Matched Answer: {matched_answer}")
     print(f"Coaching Tip: {coaching_tip}")
     print("------ Full Prompt Sent to GPT ------")
