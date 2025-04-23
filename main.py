@@ -1,28 +1,3 @@
-import openai
-from fastapi import FastAPI, Query
-from fastapi.middleware.cors import CORSMiddleware
-import pandas as pd
-from difflib import get_close_matches
-import os
-
-# Load your OpenAI API key
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
-app = FastAPI()
-
-# CORS for frontend access
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Load CSV with FAQs
-df = pd.read_csv("faq.csv", encoding="utf-8")
-questions = df["Question"].tolist()
-
 @app.get("/faq")
 def get_faq(q: str = Query(...)):
     matches = get_close_matches(q, questions, n=1, cutoff=0.4)
@@ -31,24 +6,16 @@ def get_faq(q: str = Query(...)):
 
     matched_question = matches[0]
     matched_answer = df[df["Question"] == matched_question]["Answer"].values[0]
-	coaching_tip = df[df["Question"] == matched_question]["Coaching Tip"].values[0]
+    coaching_tip = df[df["Question"] == matched_question]["Coaching Tip"].values[0]
 
-
-    # GPT prompt formatting
-prompt = (
-    f"You are a helpful assistant. Always use the provided answer exactly as written. "
-    f"Then, if a coaching tip is included, repeat it at the end under a heading called 'Coaching Tip.'\n\n"
-    f"Question: {user_question}\n"
-    f"Answer: {matched_answer}\n"
-    f"Coaching Tip: {coaching_tip}"
-)
-
-
-
-Question: {q}
-Relevant Info: {matched_answer}
-
-Answer:"""
+    # Build prompt
+    prompt = (
+        f"You are a helpful assistant. Always use the provided answer exactly as written. "
+        f"If a coaching tip is included, repeat it at the end under a heading called 'Coaching Tip.'\n\n"
+        f"Question: {q}\n"
+        f"Answer: {matched_answer}\n"
+        f"Coaching Tip: {coaching_tip}"
+    )
 
     try:
         response = openai.ChatCompletion.create(
