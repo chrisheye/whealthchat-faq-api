@@ -31,9 +31,18 @@ def get_faq(q: str = Query(...)):
 
     matched_question = matches[0]
     matched_answer = df[df["Question"] == matched_question]["Answer"].values[0]
+	coaching_tip = df[df["Question"] == matched_question]["Coaching Tip"].values[0]
+
 
     # GPT prompt formatting
-    prompt = f"""You are an expert assistant. Use the information below to answer the user's question clearly and helpfully.
+  prompt = (
+    f"You are a helpful assistant. Always use the provided answer exactly as written. "
+    f"If a coaching tip is provided, include it at the end as additional advice.\n\n"
+    f"Question: {user_question}\n"
+    f"Answer: {matched_answer}\n"
+    f"Coaching Tip: {coaching_tip}"
+)
+
 
 Question: {q}
 Relevant Info: {matched_answer}
