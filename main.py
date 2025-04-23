@@ -5,6 +5,9 @@ from difflib import get_close_matches
 
 app = FastAPI()
 
+# Load the CSV and questions list
+df = pd.read_csv("faq.csv", encoding="utf-8-sig")
+questions = df["Question"].tolist()
 
 @app.get("/faq")
 def get_faq(q: str = Query(...)):
@@ -16,7 +19,6 @@ def get_faq(q: str = Query(...)):
     matched_answer = df[df["Question"] == matched_question]["Answer"].values[0]
     coaching_tip = df[df["Question"] == matched_question]["Coaching Tip"].values[0]
 
-    # Build prompt
     prompt = (
         f"You are a helpful assistant. Always use the provided answer exactly as written. "
         f"If a coaching tip is included, repeat it at the end under a heading called 'Coaching Tip.'\n\n"
@@ -25,8 +27,7 @@ def get_faq(q: str = Query(...)):
         f"Coaching Tip: {coaching_tip}"
     )
 
-    # Debug print
-    print("🧪 DEBUG INFO:")
+    print("\U0001F9EA DEBUG INFO:")
     print(f"Matched Question: {matched_question}")
     print(f"Matched Answer: {matched_answer}")
     print(f"Coaching Tip: {coaching_tip}")
