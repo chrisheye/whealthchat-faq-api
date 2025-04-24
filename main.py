@@ -1,9 +1,19 @@
 from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware  # <-- ADDED
 import pandas as pd
 import openai
 from rapidfuzz import process, fuzz
 
 app = FastAPI()
+
+# ✅ ALLOW CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # You can replace * with your domain later
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Load the FAQ data
 df = pd.read_csv("faq.csv", encoding="utf-8-sig")
