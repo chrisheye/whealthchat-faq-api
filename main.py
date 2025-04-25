@@ -18,17 +18,16 @@ collection = client.collections.get("Whealthchat_rag")
 def get_faq(q: str = Query(...)):
     response = collection.query.near_text(
         query=q,
-        limit=1,
-        return_metadata=["distance"]
+        limit=1
     )
 
     if not response.objects:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
     obj = response.objects[0]
-    score = obj.metadata.distance if obj.metadata and obj.metadata.distance is not None else 0.5
+    score = getattr(obj.metadata, "distance", None)
 
-    if score > 0.3:
+    if score is not None and score > 0.35:  # 0 = perfect match, 1 = totally unrelated
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
     props = obj.properties
@@ -39,7 +38,7 @@ def get_faq(q: str = Query(...)):
     prompt = (
         "You are a helpful assistant. Respond in plain text only. Do not use Markdown, bullets, or HTML.\n\n"
         "Always use the provided answer exactly as written. "
-        "If a coaching tip is included, start a new paragraph with 'Coaching Tip:' and show it.\n\n"
+        "If a coaching tip is included, repeat it at the end under a heading called 'Coaching Tip.'\n\n"
         f"Question: {q}\n"
         f"Answer: {answer}\n"
         f"Coaching Tip: {coaching_tip}"
@@ -49,7 +48,7 @@ def get_faq(q: str = Query(...)):
         reply = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=500,
+            max_tokens=300,
             temperature=0.5
         )
         return reply.choices[0].message.content.strip()
