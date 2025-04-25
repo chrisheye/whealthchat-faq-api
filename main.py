@@ -3,8 +3,6 @@ import os
 import weaviate
 import openai
 
-app = FastAPI()
-
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -17,7 +15,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 # Connect to Weaviate (RAG backend)
 client = weaviate.connect_to_wcs(
@@ -43,7 +40,6 @@ def get_faq(q: str = Query(...)):
     distance = obj.metadata.distance if obj.metadata and hasattr(obj.metadata, "distance") else 1.0
 
     # Distance: 0 = perfect match, 1 = totally unrelated
-    # We want LOW distance (high similarity)
     if distance > 0.45:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
@@ -72,11 +68,9 @@ def get_faq(q: str = Query(...)):
         )
         clean_response = reply.choices[0].message.content.strip()
 
-        # Remove starting and ending quotes if they exist
+        # 🧹 Post-cleaning
         if clean_response.startswith('"') and clean_response.endswith('"'):
             clean_response = clean_response[1:-1]
-
-        # Also fix weird escaped \n\n
         clean_response = clean_response.replace("\\n", "\n")
 
         return clean_response
