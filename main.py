@@ -1,50 +1,47 @@
 from fastapi import FastAPI, Query
 import os
-import weaviate
 import openai
+import weaviate
 
 app = FastAPI()
 
-# Connect to Weaviate (RAG backend)
+# Connect to Weaviate
 client = weaviate.connect_to_wcs(
     cluster_url=os.getenv("WEAVIATE_CLUSTER_URL"),
     auth_credentials=weaviate.auth.AuthApiKey(os.getenv("WEAVIATE_API_KEY")),
-    headers={"X-OpenAI-Api-Key": os.getenv("OPENAI_API_KEY")}
+    headers={"X-OpenAI-Api-Key": os.getenv("OPENAI_APIKEY")},
 )
-
 collection = client.collections.get("Whealthchat_rag")
 
 @app.get("/faq")
 def get_faq(q: str = Query(...)):
-    response = collection.query.near_text(
-        query=q,
-        limit=1
-    )
+    response = collection.query.near_text(query=q, limit=3).objects
+    matches = response if response else []
 
-    if not response.objects:
+    if not matches:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
-    obj = response.objects[0].properties
-    question = obj.get("question", "").strip()
-    answer = obj.get("answer", "").strip()
-    coaching_tip = obj.get("coachingTip", "").strip()
+    prompt_parts = [
+        "You are a helpful assistant. Respond in plain text only. Do not use Markdown, bullets, or HTML.",
+        "Summarize and combine the information below to answer the user's question in a clear, supportive, and actionable way.",
+        f"User's Question: {q}"
+    ]
 
-    prompt = (
-        "You are a helpful assistant. Respond in plain text only. Do not use Markdown, bullets, or HTML.\n\n"
-        "Always use the provided answer exactly as written. "
-        "If a coaching tip is included, repeat it at the end under a heading called 'Coaching Tip.'\n\n"
-        f"Question: {q}\n"
-        f"Answer: {answer}\n"
-        f"Coaching Tip: {coaching_tip}"
-    )
+    for i, obj in enumerate(matches):
+        question = obj.properties.get("question", "")
+        answer = obj.properties.get("answer", "")
+        coaching = obj.properties.get("coachingTip", "")
+        prompt_parts.append(f"\nFAQ #{i+1}:\nQ: {question}\nA: {answer}\nCoaching Tip: {coaching}")
+
+    prompt = "\n\n".join(prompt_parts)
 
     try:
-        reply = openai.ChatCompletion.create(
+        chat_response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=300,
+            max_tokens=500,
             temperature=0.5
         )
-        return reply.choices[0].message.content.strip()
+        return chat_response["choices"][0]["message"]["content"].strip()
     except Exception as e:
         return f"An error occurred: {str(e)}"
