@@ -67,9 +67,11 @@ def get_faq(q: str = Query(...)):
         reply = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=400,
+            max_tokens=300,
             temperature=0.5
         )
-        return reply.choices[0].message.content.strip()
+        raw_text = reply.choices[0].message.content.strip()
+        cleaned_text = raw_text.strip('"').replace("\\n", "\n")
+        return cleaned_text
     except Exception as e:
         return f"An error occurred: {str(e)}"
