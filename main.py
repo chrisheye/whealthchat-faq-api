@@ -30,7 +30,7 @@ def get_faq(q: str = Query(...)):
 
     # Distance: 0 = perfect match, 1 = totally unrelated
     # We want LOW distance (high similarity)
-    if distance > 0.3:
+    if distance > 0.45:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
     # If strong match, prepare answer
