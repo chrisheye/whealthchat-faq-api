@@ -5,6 +5,20 @@ import openai
 
 app = FastAPI()
 
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI()
+
+# Add this immediately after app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # For now allow all origins, later we can restrict to your site
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 # Connect to Weaviate (RAG backend)
 client = weaviate.connect_to_wcs(
     cluster_url=os.getenv("WEAVIATE_CLUSTER_URL"),
