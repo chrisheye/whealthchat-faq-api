@@ -7,16 +7,16 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# Add this immediately after app = FastAPI()
+# Allow CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For now allow all origins, later we can restrict to your site
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Connect to Weaviate (RAG backend)
+# Connect to Weaviate
 client = weaviate.connect_to_wcs(
     cluster_url=os.getenv("WEAVIATE_CLUSTER_URL"),
     auth_credentials=weaviate.auth.AuthApiKey(os.getenv("WEAVIATE_API_KEY")),
@@ -39,17 +39,14 @@ def get_faq(q: str = Query(...)):
     obj = response.objects[0]
     distance = obj.metadata.distance if obj.metadata and hasattr(obj.metadata, "distance") else 1.0
 
-    # Distance: 0 = perfect match, 1 = totally unrelated
     if distance > 0.45:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
-    # If strong match, prepare answer
     props = obj.properties
     question = props.get("question", "").strip()
     answer = props.get("answer", "").strip()
     coaching_tip = props.get("coachingTip", "").strip()
 
-    # Compose clean prompt
     prompt = (
         "You are a helpful assistant. Respond in plain text only. Do not use Markdown, bullets, or HTML.\n\n"
         "Always use the provided answer exactly as written. "
@@ -68,16 +65,12 @@ def get_faq(q: str = Query(...)):
         )
         clean_response = reply.choices[0].message.content.strip()
 
-        # 🧹 Full cleaning:
+        # 🛠 Clean up the output properly
         if clean_response.startswith('"') and clean_response.endswith('"'):
             clean_response = clean_response[1:-1]
 
-        # Fix escaped characters (example: \\n -> real line breaks)
-        import codecs
-        clean_response = codecs.decode(clean_response, 'unicode_escape')
+        clean_response = clean_response.replace("\\n", "\n").strip()
 
         return clean_response
     except Exception as e:
         return f"An error occurred: {str(e)}"
-
-
