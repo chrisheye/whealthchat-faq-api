@@ -18,25 +18,27 @@ collection = client.collections.get("Whealthchat_rag")
 def get_faq(q: str = Query(...)):
     response = collection.query.near_text(
         query=q,
-        limit=1
+        limit=1,
+        return_metadata=["score"]
     )
 
     if not response.objects:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
-    obj_full = response.objects[0]  # full object
-    obj = obj_full.properties        # only properties (text data)
+    obj_full = response.objects[0]
+    score = obj_full.additional.get("score", 1.0)
 
-    if obj_full.certainty is not None and obj_full.certainty < 0.75:
+    if score < 0.75:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
+    obj = obj_full.properties
     question = obj.get("question", "").strip()
     answer = obj.get("answer", "").strip()
     coaching_tip = obj.get("coachingTip", "").strip()
 
     prompt = (
         "You are a helpful assistant. Respond in plain text only. Do not use Markdown, bullets, or HTML.\n\n"
-        "Always use the provided answer exactly as written.\n"
+        "Always use the provided answer exactly as written. "
         "If a coaching tip is included, repeat it at the end under a heading called 'Coaching Tip.'\n\n"
         f"Question: {q}\n"
         f"Answer: {answer}\n"
