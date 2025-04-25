@@ -12,8 +12,6 @@ client = weaviate.connect_to_wcs(
     headers={"X-OpenAI-Api-Key": os.getenv("OPENAI_API_KEY")}
 )
 
-)
-
 # Get the collection
 collection = client.collections.get("Whealthchat_rag")
 
