@@ -18,18 +18,21 @@ collection = client.collections.get("Whealthchat_rag")
 def get_faq(q: str = Query(...)):
     response = collection.query.near_text(
         query=q,
-        limit=1
+        limit=1,
+        return_metadata=["score"]
     )
 
     if not response.objects:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
     obj = response.objects[0]
-    score = getattr(obj.metadata, "distance", None)
+    score = obj.metadata.score  # lower = better match
 
-    if score is not None and score > 0.20:  # 0 = perfect match, 1 = totally unrelated
+    # 🛑 If match score is too poor, immediately reject
+    if score is None or score > 0.2:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
+    # ✅ Otherwise proceed to generate a GPT-polished answer
     props = obj.properties
     question = props.get("question", "").strip()
     answer = props.get("answer", "").strip()
