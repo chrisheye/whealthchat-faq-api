@@ -26,31 +26,27 @@ def get_faq(q: str = Query(...)):
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
     obj = response.objects[0]
-    score = obj.metadata.score if obj.metadata and obj.metadata.score else 0
+    props = obj.properties
 
-    if score < 0.83:
-        return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
+    question = props.get("question", "").strip()
+    answer = props.get("answer", "").strip()
+    coaching_tip = props.get("coachingTip", "").strip()
 
-    properties = obj.properties
-    question = properties.get("question", "").strip()
-    answer = properties.get("answer", "").strip()
-    coaching_tip = properties.get("coachingTip", "").strip()
-
+    # Compose the GPT prompt
     prompt = (
         "You are a helpful assistant. Respond in plain text only. Do not use Markdown, bullets, or HTML.\n\n"
-        "Always use the provided answer exactly as written.\n\n"
+        "Always use the provided answer exactly as written. "
+        "If a coaching tip is included, start a new paragraph with 'Coaching Tip:' and then present the tip.\n\n"
         f"Question: {q}\n"
         f"Answer: {answer}\n"
+        f"Coaching Tip: {coaching_tip}"
     )
-
-    if coaching_tip:
-        prompt += f"\nCoaching Tip: {coaching_tip}"
 
     try:
         reply = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=400,
+            max_tokens=300,
             temperature=0.5
         )
         return reply.choices[0].message.content.strip()
