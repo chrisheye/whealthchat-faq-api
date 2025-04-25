@@ -1,23 +1,19 @@
 from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
 import os
 import weaviate
 import openai
 
 app = FastAPI()
 
-from fastapi.middleware.cors import CORSMiddleware
-
-app = FastAPI()
-
-# Add this immediately after app = FastAPI()
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For now allow all origins, later we can restrict to your site
+    allow_origins=["*"],  # Later, you can restrict this to your exact domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 # Connect to Weaviate (RAG backend)
 client = weaviate.connect_to_wcs(
@@ -32,32 +28,27 @@ collection = client.collections.get("Whealthchat_rag")
 def get_faq(q: str = Query(...)):
     response = collection.query.near_text(
         query=q,
-        limit=1,
-        return_metadata=["distance"]
+        limit=1
     )
 
     if not response.objects:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
     obj = response.objects[0]
-    distance = obj.metadata.distance if obj.metadata and hasattr(obj.metadata, "distance") else 1.0
+    obj_props = obj.properties
+    score = obj.metadata.distance if obj.metadata and obj.metadata.distance is not None else 1.0
 
-    # Distance: 0 = perfect match, 1 = totally unrelated
-    # We want LOW distance (high similarity)
-    if distance > 0.45:
+    if score > 0.2:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
-    # If strong match, prepare answer
-    props = obj.properties
-    question = props.get("question", "").strip()
-    answer = props.get("answer", "").strip()
-    coaching_tip = props.get("coachingTip", "").strip()
+    question = obj_props.get("question", "").strip()
+    answer = obj_props.get("answer", "").strip()
+    coaching_tip = obj_props.get("coachingTip", "").strip()
 
-    # Compose clean prompt
     prompt = (
-        "You are a helpful assistant. Respond in plain text only. Do not use Markdown, bullets, or HTML.\n\n"
+        "You are a helpful assistant. Respond in plain text only. Do not use Markdown, bullets, quotes, or HTML.\n\n"
         "Always use the provided answer exactly as written. "
-        "If a coaching tip is included, repeat it under a heading 'Coaching Tip.'\n\n"
+        "If a coaching tip is included, add two line breaks and a heading called 'Coaching Tip:' before stating the tip.\n\n"
         f"Question: {q}\n"
         f"Answer: {answer}\n"
         f"Coaching Tip: {coaching_tip}"
@@ -67,11 +58,12 @@ def get_faq(q: str = Query(...)):
         reply = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=300,
+            max_tokens=400,
             temperature=0.5
         )
-        raw_text = reply.choices[0].message.content.strip()
-        cleaned_text = raw_text.strip('"').replace("\\n", "\n")
-        return cleaned_text
+        clean_response = reply.choices[0].message.content.strip()
+        if clean_response.startswith('"') and clean_response.endswith('"'):
+            clean_response = clean_response[1:-1]  # remove extra surrounding quotes
+        return clean_response
     except Exception as e:
         return f"An error occurred: {str(e)}"
