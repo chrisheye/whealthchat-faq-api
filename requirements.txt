@@ -3,3 +3,4 @@ uvicorn
 pandas
 python-Levenshtein
 openai==0.28.1
+weaviate-client
