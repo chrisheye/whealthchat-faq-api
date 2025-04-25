@@ -24,20 +24,20 @@ def get_faq(q: str = Query(...)):
     if not response.objects:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
-    obj = response.objects[0]
-    if obj.certainty is not None and obj.certainty < 0.75:
-        return "I'm not confident I can answer that accurately. Try rephrasing your question or ask about financial, retirement, estate, or healthcare planning."
+    obj_full = response.objects[0]  # full object
+    obj = obj_full.properties        # only properties (text data)
 
-    props = obj.properties
-    question = props.get("question", "").strip()
-    answer = props.get("answer", "").strip()
-    coaching_tip = props.get("coachingTip", "").strip()
+    if obj_full.certainty is not None and obj_full.certainty < 0.75:
+        return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
+
+    question = obj.get("question", "").strip()
+    answer = obj.get("answer", "").strip()
+    coaching_tip = obj.get("coachingTip", "").strip()
 
     prompt = (
         "You are a helpful assistant. Respond in plain text only. Do not use Markdown, bullets, or HTML.\n\n"
         "Always use the provided answer exactly as written.\n"
-        "If a coaching tip is included, place it at the end after two line breaks.\n"
-        "Start it with the heading: 'Coaching Tip:'\n\n"
+        "If a coaching tip is included, repeat it at the end under a heading called 'Coaching Tip.'\n\n"
         f"Question: {q}\n"
         f"Answer: {answer}\n"
         f"Coaching Tip: {coaching_tip}"
