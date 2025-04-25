@@ -27,7 +27,7 @@ def get_faq(q: str = Query(...)):
     obj = response.objects[0]
     score = getattr(obj.metadata, "distance", None)
 
-    if score is not None and score > 0.27:  # 0 = perfect match, 1 = totally unrelated
+    if score is not None and score > 0.20:  # 0 = perfect match, 1 = totally unrelated
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
     props = obj.properties
