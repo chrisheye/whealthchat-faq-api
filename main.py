@@ -18,38 +18,36 @@ collection = client.collections.get("Whealthchat_rag")
 def get_faq(q: str = Query(...)):
     response = collection.query.near_text(
         query=q,
-        limit=3  # Fetch top 3 matches
+        limit=1
     )
 
     if not response.objects:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
-    blocks = []
-    for obj in response.objects:
-        props = obj.properties
-        question = props.get("question", "").strip()
-        answer = props.get("answer", "").strip()
-        tip = props.get("coachingTip", "").strip()
+    obj = response.objects[0]
+    if obj.certainty is not None and obj.certainty < 0.75:
+        return "I'm not confident I can answer that accurately. Try rephrasing your question or ask about financial, retirement, estate, or healthcare planning."
 
-        if not answer:
-            continue
+    props = obj.properties
+    question = props.get("question", "").strip()
+    answer = props.get("answer", "").strip()
+    coaching_tip = props.get("coachingTip", "").strip()
 
-        block = f"Answer: {answer}"
-        if tip:
-            block += f"\n\nCoaching Tip: {tip}"
-        blocks.append(block)
-
-    full_prompt = (
+    prompt = (
         "You are a helpful assistant. Respond in plain text only. Do not use Markdown, bullets, or HTML.\n\n"
-        "The user asked a question. You were given multiple relevant answers. Create a single, coherent response based on them.\n\n"
-        f"Question: {q}\n\n" + "\n\n---\n\n".join(blocks)
+        "Always use the provided answer exactly as written.\n"
+        "If a coaching tip is included, place it at the end after two line breaks.\n"
+        "Start it with the heading: 'Coaching Tip:'\n\n"
+        f"Question: {q}\n"
+        f"Answer: {answer}\n"
+        f"Coaching Tip: {coaching_tip}"
     )
 
     try:
         reply = openai.ChatCompletion.create(
             model="gpt-4",
-            messages=[{"role": "user", "content": full_prompt}],
-            max_tokens=400,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=300,
             temperature=0.5
         )
         return reply.choices[0].message.content.strip()
