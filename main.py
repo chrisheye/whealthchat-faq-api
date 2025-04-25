@@ -68,11 +68,16 @@ def get_faq(q: str = Query(...)):
         )
         clean_response = reply.choices[0].message.content.strip()
 
-        # 🧹 Post-cleaning
+        # 🧹 Full cleaning:
         if clean_response.startswith('"') and clean_response.endswith('"'):
             clean_response = clean_response[1:-1]
-        clean_response = clean_response.replace("\\n", "\n")
+
+        # Fix escaped characters (example: \\n -> real line breaks)
+        import codecs
+        clean_response = codecs.decode(clean_response, 'unicode_escape')
 
         return clean_response
     except Exception as e:
         return f"An error occurred: {str(e)}"
+
+
