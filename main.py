@@ -18,26 +18,28 @@ collection = client.collections.get("Whealthchat_rag")
 def get_faq(q: str = Query(...)):
     response = collection.query.near_text(
         query=q,
-        limit=1
+        limit=1,
+        return_metadata=["distance"]
     )
 
     if not response.objects:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
     obj = response.objects[0]
-    score = obj.metadata.score if obj.metadata and hasattr(obj.metadata, "score") else 1.0
+    distance = obj.metadata.distance if obj.metadata and hasattr(obj.metadata, "distance") else 1.0
 
-    # Check the similarity score EARLY — if too weak, exit immediately
-    if score > 0.3:  # you can tweak this slightly later if needed
+    # Distance: 0 = perfect match, 1 = totally unrelated
+    # We want LOW distance (high similarity)
+    if distance > 0.3:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
-    # If strong enough match, build the answer
+    # If strong match, prepare answer
     props = obj.properties
     question = props.get("question", "").strip()
     answer = props.get("answer", "").strip()
     coaching_tip = props.get("coachingTip", "").strip()
 
-    # Compose prompt carefully
+    # Compose clean prompt
     prompt = (
         "You are a helpful assistant. Respond in plain text only. Do not use Markdown, bullets, or HTML.\n\n"
         "Always use the provided answer exactly as written. "
