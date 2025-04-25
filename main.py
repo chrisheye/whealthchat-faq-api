@@ -1,51 +1,52 @@
 from fastapi import FastAPI, Query
-import weaviate
+import pandas as pd
 import os
+import weaviate
+from weaviate.auth import AuthApiKey
+from weaviate.classes.init import WeaviateClientConfig
+from weaviate.classes.query import Filter
+from weaviate.classes.query import MetadataQuery
 
-# === CONFIG ===
-WEAVIATE_URL = "https://wm1lowcq6jljdkqldaxq.c0.us-west3.gcp.weaviate.cloud"
-WEAVIATE_API_KEY = "8Slc79F6PAqNuyhTspOK5kDJURBqgzwIdX26"
-OPENAI_API_KEY = os.getenv("OPENAI_APIKEY")
-COLLECTION_NAME = "Whealthchat_rag"
-SIMILARITY_THRESHOLD = 0.75
-
-# === INIT ===
 app = FastAPI()
 
-client = weaviate.Client(
-    url=WEAVIATE_URL,
-    auth_client_secret=weaviate.AuthApiKey(WEAVIATE_API_KEY),
-    additional_headers={"X-Openai-Api-Key": OPENAI_API_KEY}
+# === Weaviate Configuration ===
+WEAVIATE_URL = "https://wm1lowcq6jljdkqldaxq.c0.us-west3.gcp.weaviate.cloud"
+WEAVIATE_API_KEY = os.getenv("WEAVIATE_API_KEY")  # make sure this is set in Render secrets
+OPENAI_API_KEY = os.getenv("OPENAI_APIKEY")       # also must be set in Render secrets
+
+client = weaviate.WeaviateClient(
+    config=WeaviateClientConfig(
+        endpoint=WEAVIATE_URL,
+        auth_credentials=AuthApiKey(WEAVIATE_API_KEY),
+        headers={"X-OpenAI-Api-Key": OPENAI_API_KEY}
+    )
 )
 
-# === ENDPOINT ===
+COLLECTION_NAME = "Whealthchat_rag"
+
 @app.get("/faq")
-def get_faq(q: str = Query(...)):
-    response = client.query.get(COLLECTION_NAME, ["question", "answer", "coachingTip"])\
-        .with_near_text({"concepts": [q]})\
-        .with_limit(1)\
-        .with_additional(["certainty"])\
-        .do()
-
+def faq(q: str = Query(...)):
+    # Perform a vector search with hybrid scoring
     try:
-        result = response["data"]["Get"][COLLECTION_NAME][0]
-        certainty = result["_additional"]["certainty"]
+        response = client.collections.get(COLLECTION_NAME).query.near_text(
+            query=q,
+            limit=1,
+            return_metadata=MetadataQuery(distance=True),
+        )
 
-        if certainty >= SIMILARITY_THRESHOLD:
-            answer = result["answer"].strip()
-            coaching_tip = result.get("coachingTip", "").strip()
+        if not response.objects:
+            return "I do not possess the information to answer that question. Try asking something about financial, estate, or healthcare planning."
 
-            final_response = f"{answer}"
-            if coaching_tip:
-                final_response += f"\n\nCoaching Tip: {coaching_tip}"
+        obj = response.objects[0]
+        question = obj.properties["question"]
+        answer = obj.properties["answer"]
+        tip = obj.properties.get("coachingTip", "").strip()
 
-            return final_response
+        result = f"**{question}**\n\n{answer}"
+        if tip:
+            result += f"\n\n**Coaching Tip:** {tip}"
 
-        else:
-            return (
-                "I’m not confident enough to answer that. "
-                "Try asking something related to financial, estate, retirement, or healthcare planning."
-            )
+        return result
 
     except Exception as e:
         return f"An error occurred: {str(e)}"
