@@ -26,7 +26,7 @@ def get_faq(q: str = Query(...)):
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
     obj = response.objects[0]
-    score = obj.metadata.get("score", 0)
+    score = obj.metadata.score if obj.metadata and obj.metadata.score else 0
 
     if score < 0.83:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
