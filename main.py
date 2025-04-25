@@ -7,11 +7,11 @@ app = FastAPI()
 
 # Set up Weaviate client connection
 client = weaviate.connect_to_wcs(
-    cluster_url="wm1lowcq6jljdkqldaxq.c0.us-west3.gcp.weaviate.cloud",
+    cluster_url=os.getenv("WEAVIATE_CLUSTER_URL"),
     auth_credentials=weaviate.auth.AuthApiKey(os.getenv("WEAVIATE_API_KEY")),
-    headers={
-        "X-OpenAI-Api-Key": os.getenv("OPENAI_APIKEY")
-    }
+    headers={"X-OpenAI-Api-Key": os.getenv("OPENAI_API_KEY")}
+)
+
 )
 
 # Get the collection
