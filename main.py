@@ -27,12 +27,12 @@ collection = client.collections.get("FAQ")
 
 @app.get("/faq")
 def get_faq(q: str = Query(...)):
-    response = collection.query.near_text(
-        query=q,
-        limit=1,
-        return_metadata=["distance"]
-    )
-
+response = collection.query.near_text(
+    query=q,
+    limit=1,
+    return_metadata=["distance"],
+    return_properties=["question", "answer", "coachingTip"]
+)
     if not response.objects:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
