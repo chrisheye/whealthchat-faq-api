@@ -23,7 +23,7 @@ client = weaviate.connect_to_wcs(
     headers={"X-OpenAI-Api-Key": os.getenv("OPENAI_API_KEY")}
 )
 
-collection = client.collections.get("Whealthchat_rag")
+collection = client.collections.get("FAQ")
 
 @app.get("/faq")
 def get_faq(q: str = Query(...)):
