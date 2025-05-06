@@ -27,12 +27,12 @@ collection = client.collections.get("FAQ")
 
 @app.get("/faq")
 def get_faq(q: str = Query(...)):
-response = collection.query.near_text(
-    query=q,
-    limit=1,
-    return_metadata=["distance"],
-    return_properties=["question", "answer", "coachingTip"]
-)
+    response = collection.query.near_text(
+        query=q,
+        limit=1,
+        return_metadata=["distance"]
+    )
+
     if not response.objects:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
@@ -65,7 +65,6 @@ response = collection.query.near_text(
         )
         clean_response = reply.choices[0].message.content.strip()
 
-        # 🛠 Clean up the output properly
         if clean_response.startswith('"') and clean_response.endswith('"'):
             clean_response = clean_response[1:-1]
 
@@ -74,3 +73,4 @@ response = collection.query.near_text(
         return clean_response
     except Exception as e:
         return f"An error occurred: {str(e)}"
+
