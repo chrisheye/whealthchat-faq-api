@@ -25,8 +25,12 @@ client = weaviate.connect_to_wcs(
 
 collection = client.collections.get("FAQ")
 
-@app.get("/faq")
-def get_faq(q: str = Query(...)):
+from fastapi import Request
+
+@app.post("/faq")
+async def get_faq(request: Request):
+    body = await request.json()
+    q = body.get("query", "").strip()
     response = collection.query.near_text(
         query=q,
         limit=1,
@@ -73,4 +77,3 @@ def get_faq(q: str = Query(...)):
         return clean_response
     except Exception as e:
         return f"An error occurred: {str(e)}"
-
