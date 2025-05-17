@@ -31,6 +31,7 @@ from fastapi import Request
 async def get_faq(request: Request):
     body = await request.json()
     q = body.get("query", "").strip()
+    print(f"Received question: {q}")
     response = collection.query.near_text(
         query=q,
         limit=1,
