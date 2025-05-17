@@ -52,18 +52,18 @@ async def get_faq(request: Request):
     answer = props.get("answer", "").strip()
     coaching_tip = props.get("coachingTip", "").strip()
 
-prompt = (
-    "You are a helpful assistant. Respond using Markdown with consistent formatting.\n"
-    "Bold the words 'Answer:' and 'Coaching Tip:' exactly as shown.\n"
-    "Do not bold any other parts of the answer text.\n"
-    "Keep 'Coaching Tip:' inline with the rest of the text, followed by a colon.\n"
-    "Use line breaks only to separate paragraphs.\n\n"
-    f"Question: {q}\n"
-    f"Answer: {answer}\n"
-    f"Coaching Tip: {coaching_tip}"
-)
+    prompt = (
+        "You are a helpful assistant. Respond using Markdown with consistent formatting.\n"
+        "Bold the words 'Answer:' and 'Coaching Tip:' exactly as shown.\n"
+        "Do not bold any other parts of the answer text.\n"
+        "Keep 'Coaching Tip:' inline with the rest of the text, followed by a colon.\n"
+        "Use line breaks only to separate paragraphs.\n\n"
+        f"Question: {q}\n"
+        f"Answer: {answer}\n"
+        f"Coaching Tip: {coaching_tip}"
+    )
 
-print("Prompt sent to OpenAI:", repr(prompt))
+    print("Prompt sent to OpenAI:", repr(prompt))
 
     try:
         reply = openai.ChatCompletion.create(
