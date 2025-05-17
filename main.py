@@ -44,7 +44,7 @@ async def get_faq(request: Request):
     obj = response.objects[0]
     distance = obj.metadata.distance if obj.metadata and hasattr(obj.metadata, "distance") else 1.0
 
-    if distance > 0.45:
+    if distance > 0.6:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
     props = obj.properties
