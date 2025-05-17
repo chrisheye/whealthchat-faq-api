@@ -61,20 +61,22 @@ async def get_faq(request: Request):
         f"Coaching Tip: {coaching_tip}"
     )
 
-    try:
-        reply = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=400,
-            temperature=0.5
-        )
-        clean_response = reply.choices[0].message.content.strip()
+try:
+    reply = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=400,
+        temperature=0.5
+    )
+    clean_response = reply.choices[0].message.content.strip()
 
-        if clean_response.startswith('"') and clean_response.endswith('"'):
-            clean_response = clean_response[1:-1]
+    if clean_response.startswith('"') and clean_response.endswith('"'):
+        clean_response = clean_response[1:-1]
 
-        clean_response = clean_response.replace("\\n", "\n").strip()
+    clean_response = clean_response.replace("\\n", "\n").strip()
     print("Backend answer sent:", answer)
-        return clean_response
-    except Exception as e:
-        return f"An error occurred: {str(e)}"
+    return clean_response
+
+except Exception as e:
+    return f"An error occurred: {str(e)}"
+
