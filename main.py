@@ -53,7 +53,7 @@ async def get_faq(request: Request):
     coaching_tip = props.get("coachingTip", "").strip()
 
     prompt = (
-        "You are a helpful assistant. Respond in plain text only. Do not use Markdown, bullets, or HTML.\n\n"
+        "You are a helpful assistant. You may respond with Markdown formatting, including bold, bullets, and line breaks.\n\n"
         "Always use the provided answer exactly as written. "
         "If a coaching tip is included, repeat it under a heading 'Coaching Tip.'\n\n"
         f"Question: {q}\n"
@@ -75,7 +75,6 @@ async def get_faq(request: Request):
 
         clean_response = clean_response.replace("\\n", "\n").strip()
         print("Backend answer sent:", answer)
-        print("Backend reply sent:", repr(clean_response))
         return clean_response
 
     except Exception as e:
