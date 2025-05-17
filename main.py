@@ -74,7 +74,7 @@ async def get_faq(request: Request):
             clean_response = clean_response[1:-1]
 
         clean_response = clean_response.replace("\\n", "\n").strip()
-
+    print("Backend answer sent:", answer)
         return clean_response
     except Exception as e:
         return f"An error occurred: {str(e)}"
