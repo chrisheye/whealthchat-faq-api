@@ -59,7 +59,7 @@ async def get_faq(request: Request):
         "Keep 'Coaching Tip:' inline with the rest of the text, followed by a colon.\n"
         "Use line breaks only to separate paragraphs.\n\n"
         f"Question: {q}\n"
-        f"Answer: {answer}\n"
+        f"{answer}\n"
         f"Coaching Tip: {coaching_tip}"
     )
 
