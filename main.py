@@ -37,7 +37,7 @@ async def get_faq(request: Request):
         limit=1,
         return_metadata=["distance"]
     )
-
+    print(f"Weaviate response: {response}")
     if not response.objects:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
