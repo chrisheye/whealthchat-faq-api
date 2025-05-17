@@ -54,7 +54,8 @@ async def get_faq(request: Request):
 
     prompt = (
         "You are a helpful assistant. Respond using Markdown with consistent formatting.\n"
-        "Bold the words 'Answer:' and 'Coaching Tip:' exactly as shown.\n"
+        "Do NOT include the word 'Answer:' in your response.\n"
+        "Bold the words 'Coaching Tip:' exactly as shown.\n"
         "Do not bold any other parts of the answer text.\n"
         "Keep 'Coaching Tip:' inline with the rest of the text, followed by a colon.\n"
         "Use line breaks only to separate paragraphs.\n\n"
