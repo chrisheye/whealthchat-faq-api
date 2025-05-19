@@ -32,12 +32,58 @@ async def get_faq(request: Request):
     body = await request.json()
     q = body.get("query", "").strip()
     print(f"Received question: {q}")
+
+    # ✅ Step 1: Exact match check (case-sensitive)
+    exact_match = collection.query\
+        .with_where({"path": ["question"], "operator": "Equal", "valueText": q})\
+        .with_limit(1)\
+        .with_additional(["distance"])\
+        .do()
+
+    if exact_match.objects:
+        obj = exact_match.objects[0]
+        props = obj.properties
+        answer = props.get("answer", "").strip()
+        coaching_tip = props.get("coachingTip", "").strip()
+
+        prompt = (
+            "You are a helpful assistant. Respond using Markdown with consistent formatting.\n"
+            "Do NOT include the word 'Answer:' in your response.\n"
+            "Bold the words 'Coaching Tip:' exactly as shown.\n"
+            "Do not bold any other parts of the answer text.\n"
+            "Keep 'Coaching Tip:' inline with the rest of the text, followed by a colon.\n"
+            "Use line breaks only to separate paragraphs.\n\n"
+            f"Question: {q}\n"
+            f"{answer}\n"
+            f"Coaching Tip: {coaching_tip}"
+        )
+
+        print("Exact match found. Prompt sent to OpenAI:", repr(prompt))
+
+        try:
+            reply = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=400,
+                temperature=0.5
+            )
+            clean_response = reply.choices[0].message.content.strip()
+            if clean_response.startswith('"') and clean_response.endswith('"'):
+                clean_response = clean_response[1:-1]
+            clean_response = clean_response.replace("\\n", "\n").strip()
+            return clean_response
+
+        except Exception as e:
+            return f"An error occurred: {str(e)}"
+
+    # ✅ Step 2: Fall back to vector search if no exact match found
     response = collection.query.near_text(
         query=q,
         limit=1,
         return_metadata=["distance"]
     )
     print(f"Weaviate response: {response}")
+
     if not response.objects:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
@@ -48,7 +94,6 @@ async def get_faq(request: Request):
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
 
     props = obj.properties
-    question = props.get("question", "").strip()
     answer = props.get("answer", "").strip()
     coaching_tip = props.get("coachingTip", "").strip()
 
@@ -84,3 +129,4 @@ async def get_faq(request: Request):
 
     except Exception as e:
         return f"An error occurred: {str(e)}"
+
