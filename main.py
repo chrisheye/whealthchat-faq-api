@@ -34,11 +34,15 @@ async def get_faq(request: Request):
     print(f"Received question: {q}")
 
     # ✅ Step 1: Exact match check (case-sensitive)
-    exact_match = collection.query\
-        .with_where({"path": ["question"], "operator": "Equal", "valueText": q})\
-        .with_limit(1)\
-        .with_additional(["distance"])\
-        .do()
+    exact_match = collection.query.fetch_objects(
+        filters={
+            "operator": "Equal",
+            "path": ["question"],
+            "valueText": q
+        },
+        limit=1
+    )
+
 
     if exact_match.objects:
         obj = exact_match.objects[0]
