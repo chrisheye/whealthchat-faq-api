@@ -1,3 +1,4 @@
+from weaviate.collections.classes.filters import Filter
 from fastapi import FastAPI, Query
 import os
 import weaviate
@@ -34,14 +35,13 @@ async def get_faq(request: Request):
     print(f"Received question: {q}")
 
     # ✅ Step 1: Exact match check (case-sensitive)
+    filters = Filter.by_property("question").equal(q)
+    
     exact_match = collection.query.fetch_objects(
-        filters={
-            "operator": "Equal",
-            "path": ["question"],
-            "valueText": q
-        },
+        filters=filters,
         limit=1
     )
+
 
 
     if exact_match.objects:
