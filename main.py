@@ -42,6 +42,8 @@ while True:
         print(obj.properties.get("question"))
 
     offset += limit
+    print(f"\nTotal FAQs found: {offset}")
+
 
 from fastapi import Request
 
