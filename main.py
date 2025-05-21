@@ -27,7 +27,6 @@ client = weaviate.connect_to_wcs(
 collection = client.collections.get("FAQ")
 
 # TEMPORARY: Print all FAQ questions to check for old entries
-print("\n--- Current FAQ Questions ---")
 limit = 200
 offset = 0
 
@@ -36,14 +35,14 @@ while True:
     objects = result.objects
 
     if not objects:
-        break  # No more results
+        break
 
     for obj in objects:
         print(obj.properties.get("question"))
 
     offset += limit
-    print(f"\nTotal FAQs found: {offset}")
 
+print(f"\nTotal FAQs found: {offset}")
 
 from fastapi import Request
 
