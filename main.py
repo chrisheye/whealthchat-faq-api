@@ -26,6 +26,12 @@ client = weaviate.connect_to_wcs(
 
 collection = client.collections.get("FAQ")
 
+# TEMPORARY: Print all FAQ questions to check for old entries
+print("\n--- Current FAQ Questions ---")
+for obj in collection.query.fetch_objects().objects:
+    print(obj.properties.get("question"))
+
+
 from fastapi import Request
 
 @app.post("/faq")
