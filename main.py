@@ -28,10 +28,20 @@ collection = client.collections.get("FAQ")
 
 # TEMPORARY: Print all FAQ questions to check for old entries
 print("\n--- Current FAQ Questions ---")
-objects = collection.query.fetch_objects(limit=200).objects
-for obj in objects:
-    print(obj.properties.get("question"))
+limit = 200
+offset = 0
 
+while True:
+    result = collection.query.fetch_objects(limit=limit, offset=offset)
+    objects = result.objects
+
+    if not objects:
+        break  # No more results
+
+    for obj in objects:
+        print(obj.properties.get("question"))
+
+    offset += limit
 
 from fastapi import Request
 
