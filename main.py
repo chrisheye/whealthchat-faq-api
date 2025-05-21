@@ -28,7 +28,8 @@ collection = client.collections.get("FAQ")
 
 # TEMPORARY: Print all FAQ questions to check for old entries
 print("\n--- Current FAQ Questions ---")
-for obj in collection.query.fetch_objects().objects:
+objects = collection.query.fetch_objects(limit=200).objects
+for obj in objects:
     print(obj.properties.get("question"))
 
 
