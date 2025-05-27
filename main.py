@@ -7,6 +7,9 @@ import openai
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+@app.get("/version")
+def version_check():
+    return {"status": "Running", "message": "✅ CORS enabled version"}
 
 # ✅ Fix CORS for production
 
