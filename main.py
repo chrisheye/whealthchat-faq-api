@@ -29,14 +29,13 @@ client = weaviate.connect_to_wcs(
 
 collection = client.collections.get("FAQ")
 
-
 @app.post("/faq")
 async def get_faq(request: Request):
     body = await request.json()
     q = body.get("query", "").strip()
     print(f"Received question: {q}")
 
-    # ✅ Step 1: Exact match check
+    # ✅ Step 1: Exact match check (case-sensitive)
     filters = Filter.by_property("question").equal(q)
     print("🔍 Performing match lookup for:", q)
 
@@ -77,18 +76,21 @@ async def get_faq(request: Request):
             if clean_response.startswith('"') and clean_response.endswith('"'):
                 clean_response = clean_response[1:-1]
             clean_response = clean_response.replace("\\n", "\n").strip()
-            return clean_response  # ✅ RETURN EARLY
+            return clean_response  # ✅ RETURN after exact match to stop fallback
 
         except Exception as e:
             return f"An error occurred: {str(e)}"
 
-    # ✅ Step 2: Fall back to vector search if no exact match
+    # ✅ Step 2: Fall back to vector search if no exact match found
     response = collection.query.near_text(
         query=q,
         limit=1,
         return_metadata=["distance"]
     )
     print(f"Weaviate response: {response}")
+
+    if response.objects:
+        print("🧠 Vector match question:", response.objects[0].properties.get("question"))
 
     if not response.objects:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
@@ -125,8 +127,10 @@ async def get_faq(request: Request):
             temperature=0.5
         )
         clean_response = reply.choices[0].message.content.strip()
+
         if clean_response.startswith('"') and clean_response.endswith('"'):
             clean_response = clean_response[1:-1]
+
         clean_response = clean_response.replace("\\n", "\n").strip()
         print("Backend answer sent:", answer)
         return clean_response
