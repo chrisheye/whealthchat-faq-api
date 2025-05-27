@@ -137,3 +137,4 @@ async def get_faq(request: Request):
 
     except Exception as e:
         return f"An error occurred: {str(e)}"
+
