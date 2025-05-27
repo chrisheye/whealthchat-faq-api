@@ -18,11 +18,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # Connect to Weaviate
 client = weaviate.connect_to_wcs(
     cluster_url=os.getenv("WEAVIATE_CLUSTER_URL"),
