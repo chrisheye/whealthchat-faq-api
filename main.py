@@ -67,14 +67,19 @@ async def get_faq(request: Request):
     q = body.get("query", "").strip()
     print(f"Received question: {q}")
 
-    # ✅ Step 1: Exact match check (case-sensitive)
-    filters = Filter.by_property("question").equal(q)
-    print("🔍 Performing exact match for:", q)
+# ✅ Step 1: Exact match check (case-sensitive)
+filters = Filter.by_property("question").equal(q)
+print("🔍 Performing exact match for:", q)
 
-    exact_match = collection.query.fetch_objects(
-        filters=filters,
-        limit=1
-    )
+exact_match = collection.query.fetch_objects(
+    filters=filters,
+    limit=1
+)
+
+if exact_match.objects:
+    print("✅ Exact match question from DB:", exact_match.objects[0].properties["question"])
+else:
+    print("❌ No exact match found.")
 
 
 
