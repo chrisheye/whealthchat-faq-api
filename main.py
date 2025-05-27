@@ -7,11 +7,9 @@ import openai
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
-@app.get("/version")
-def version_check():
-    return {"status": "Running", "message": "✅ CORS enabled version"}
 
-# Allow CORS
+# ✅ Fix CORS for production
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://whealthchat.ai"],
@@ -19,7 +17,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
     allow_credentials=True,
     allow_methods=["*"],
