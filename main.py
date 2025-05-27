@@ -1,15 +1,18 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-import weaviate
 import os
+import weaviate
 import openai
-from weaviate.collections.classes.config import Property
-from weaviate.collections.classes.filters import Filter
-from weaviate.collections.classes.data import DataObject
 
+# Load environment variables
+WEAVIATE_CLUSTER_URL = os.getenv("WEAVIATE_CLUSTER_URL")
+WEAVIATE_API_KEY = os.getenv("WEAVIATE_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# Initialize FastAPI
 app = FastAPI()
 
-# Enable CORS
+# Allow CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,59 +23,55 @@ app.add_middleware(
 
 # Connect to Weaviate
 client = weaviate.connect_to_wcs(
-    cluster_url=os.getenv("WEAVIATE_CLUSTER_URL"),
-    auth_credentials=weaviate.auth.AuthApiKey(os.getenv("WEAVIATE_API_KEY")),
-    headers={"X-OpenAI-Api-Key": os.getenv("OPENAI_API_KEY")},
+    cluster_url=WEAVIATE_CLUSTER_URL,
+    auth_credentials=weaviate.auth.AuthApiKey(WEAVIATE_API_KEY),
+    headers={"X-OpenAI-Api-Key": OPENAI_API_KEY}
 )
 
-collection = client.collections.get("FAQ")
+faq_collection = client.collections.get("FAQ")
 
-# POST endpoint
 @app.post("/faq")
 async def get_faq(request: Request):
     body = await request.json()
     q = body.get("query", "").strip()
-
     print(f"Received question: {q}")
 
-    # Exact match lookup (case-insensitive)
+    # --- Step 1: Manual exact match ---
     print(f"🔍 Performing exact match for: {q}")
-    exact_results = collection.query.fetch_objects(
-        filters=Filter.by_property("question").is_equal(q),
-        limit=1,
+    all_objects = faq_collection.query.fetch_objects(limit=1500).objects
+    exact_match_obj = next(
+        (obj for obj in all_objects if obj.properties.get("question", "").strip().lower() == q.lower()),
+        None
     )
 
-    if exact_results.objects:
-        obj = exact_results.objects[0]
-        print(f"✅ Exact match found: {obj.properties['question']}")
-        answer = obj.properties.get("answer", "")
-        coaching = obj.properties.get("coachingTip", "")
+    if exact_match_obj:
+        print("✅ Exact match found.")
         return {
             "matchType": "exact",
-            "question": obj.properties["question"],
-            "answer": answer,
-            "coachingTip": coaching
+            "question": exact_match_obj.properties.get("question", ""),
+            "answer": exact_match_obj.properties.get("answer", ""),
+            "coachingTip": exact_match_obj.properties.get("coachingTip", "")
         }
 
-    # Fallback to vector search
-    print("⚠️ No exact match found. Performing vector search...")
-    vector_results = collection.query.near_text(q, limit=1)
+    # --- Step 2: Fallback vector search ---
+    print("❌ No exact match. Performing vector search.")
+    vector_results = faq_collection.query.near_text(query=q, limit=1)
+    obj = vector_results.objects[0] if vector_results.objects else None
 
-    if vector_results.objects:
-        obj = vector_results.objects[0]
-        print(f"🧠 Fallback vector match: {obj.properties['question']}")
-        answer = obj.properties.get("answer", "")
-        coaching = obj.properties.get("coachingTip", "")
+    if obj:
+        print("🧠 Fallback vector search results:", obj)
         return {
             "matchType": "vector",
-            "question": obj.properties["question"],
-            "answer": answer,
-            "coachingTip": coaching
+            "question": obj.properties.get("question", ""),
+            "answer": obj.properties.get("answer", ""),
+            "coachingTip": obj.properties.get("coachingTip", "")
         }
 
-    # No results found
-    print("❌ No FAQ entry found.")
+    # --- Step 3: Nothing found ---
+    print("⚠️ No results found at all.")
     return {
         "matchType": "none",
-        "message": "No relevant FAQ found."
+        "question": q,
+        "answer": "I'm sorry, I couldn't find an answer to that question.",
+        "coachingTip": ""
     }
