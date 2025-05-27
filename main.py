@@ -47,6 +47,17 @@ while True:
     offset += limit
 
 print(f"\nTotal FAQs found: {offset}")
+# Debug: Check if specific question exists in Weaviate
+print("\n🔎 Checking for 'Do I need a will?' entry...")
+filters = Filter.by_property("question").equal("Do I need a will?")
+result = collection.query.fetch_objects(filters=filters, limit=1)
+
+if result.objects:
+    print("✅ Found:", result.objects[0].properties["question"])
+    print("🧠 Answer:", result.objects[0].properties["answer"])
+else:
+    print("❌ 'Do I need a will?' not found in collection")
+
 
 from fastapi import Request
 
