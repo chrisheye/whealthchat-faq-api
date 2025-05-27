@@ -46,7 +46,7 @@ while True:
 
     offset += limit
 
-print(f"\nTotal FAQs found: {offset}")
+print(f"\n📊 Weaviate still holds {len(collection.query.fetch_objects(limit=2000).objects)} FAQ objects.")
 # Debug: Check if specific question exists in Weaviate
 print("\n🔎 Checking for 'Do I need a will?' entry...")
 filters = Filter.by_property("question").equal("Do I need a will?")
