@@ -1,17 +1,13 @@
-from weaviate.collections.classes.filters import Filter
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 import os
 import weaviate
 import openai
-from fastapi.middleware.cors import CORSMiddleware
+from weaviate.collections.classes.filters import Filter
 
 app = FastAPI()
 
-@app.get("/version")
-def version_check():
-    return {"status": "Running", "message": "✅ CORS enabled version"}
-
-# ✅ Fix CORS for production
+# ✅ CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://whealthchat.ai"],
@@ -20,14 +16,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Connect to Weaviate
+# ✅ Weaviate connection
 client = weaviate.connect_to_wcs(
     cluster_url=os.getenv("WEAVIATE_CLUSTER_URL"),
     auth_credentials=weaviate.auth.AuthApiKey(os.getenv("WEAVIATE_API_KEY")),
     headers={"X-OpenAI-Api-Key": os.getenv("OPENAI_API_KEY")}
 )
-
 collection = client.collections.get("FAQ")
+
+@app.get("/version")
+def version_check():
+    return {"status": "Running", "message": "✅ CORS enabled version"}
 
 @app.post("/faq")
 async def get_faq(request: Request):
@@ -35,76 +34,37 @@ async def get_faq(request: Request):
     q = body.get("query", "").strip()
     print(f"Received question: {q}")
 
-    # ✅ Step 1: Exact match check (case-sensitive)
+    # ✅ Step 1: Exact match by full string
     filters = Filter.by_property("question").equal(q)
-    print("🔍 Performing match lookup for:", q)
+    result = collection.query.fetch_objects(filters=filters, limit=1)
 
-    exact_match = collection.query.fetch_objects(
-        filters=filters,
-        limit=1
-    )
-
-    if exact_match.objects:
-        print("✅ Exact match question from DB:", exact_match.objects[0].properties["question"])
-        obj = exact_match.objects[0]
-        props = obj.properties
-        answer = props.get("answer", "").strip()
-        coaching_tip = props.get("coachingTip", "").strip()
-
-        prompt = (
-            "You are a helpful assistant. Respond using Markdown with consistent formatting.\n"
-            "Do NOT include the word 'Answer:' in your response.\n"
-            "Bold the words 'Coaching Tip:' exactly as shown.\n"
-            "Do not bold any other parts of the answer text.\n"
-            "Keep 'Coaching Tip:' inline with the rest of the text, followed by a colon.\n"
-            "Use line breaks only to separate paragraphs.\n\n"
-            f"Question: {q}\n"
-            f"{answer}\n"
-            f"Coaching Tip: {coaching_tip}"
+    if result.objects:
+        obj = result.objects[0]
+        print("✅ Exact match found:", obj.properties["question"])
+        answer = obj.properties.get("answer", "").strip()
+        coaching_tip = obj.properties.get("coachingTip", "").strip()
+    else:
+        # ✅ Step 2: Fall back to vector search
+        response = collection.query.near_text(
+            query=q,
+            limit=1,
+            return_metadata=["distance"]
         )
+        print("🧠 Fallback vector search results:", response)
 
-        print("Exact match found. Prompt sent to OpenAI:", repr(prompt))
+        if not response.objects:
+            return "I don’t have an answer to that yet. Try asking about estate, retirement, or healthcare planning."
 
-        try:
-            reply = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=400,
-                temperature=0.5
-            )
-            clean_response = reply.choices[0].message.content.strip()
-            if clean_response.startswith('"') and clean_response.endswith('"'):
-                clean_response = clean_response[1:-1]
-            clean_response = clean_response.replace("\\n", "\n").strip()
-            return clean_response  # ✅ RETURN after exact match to stop fallback
+        obj = response.objects[0]
+        distance = getattr(obj.metadata, "distance", 1.0)
+        if distance > 0.6:
+            return "I don’t have an answer to that yet. Try asking about estate, retirement, or healthcare planning."
 
-        except Exception as e:
-            return f"An error occurred: {str(e)}"
+        print("✅ Vector fallback question used:", obj.properties["question"])
+        answer = obj.properties.get("answer", "").strip()
+        coaching_tip = obj.properties.get("coachingTip", "").strip()
 
-    # ✅ Step 2: Fall back to vector search if no exact match found
-    response = collection.query.near_text(
-        query=q,
-        limit=1,
-        return_metadata=["distance"]
-    )
-    print(f"Weaviate response: {response}")
-
-    if response.objects:
-        print("🧠 Vector match question:", response.objects[0].properties.get("question"))
-
-    if not response.objects:
-        return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
-
-    obj = response.objects[0]
-    distance = obj.metadata.distance if obj.metadata and hasattr(obj.metadata, "distance") else 1.0
-
-    if distance > 0.6:
-        return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
-
-    props = obj.properties
-    answer = props.get("answer", "").strip()
-    coaching_tip = props.get("coachingTip", "").strip()
-
+    # ✅ Format final prompt
     prompt = (
         "You are a helpful assistant. Respond using Markdown with consistent formatting.\n"
         "Do NOT include the word 'Answer:' in your response.\n"
@@ -117,8 +77,7 @@ async def get_faq(request: Request):
         f"Coaching Tip: {coaching_tip}"
     )
 
-    print("Prompt sent to OpenAI:", repr(prompt))
-
+    print("📨 Prompt sent to OpenAI:", repr(prompt))
     try:
         reply = openai.ChatCompletion.create(
             model="gpt-4",
@@ -126,15 +85,7 @@ async def get_faq(request: Request):
             max_tokens=400,
             temperature=0.5
         )
-        clean_response = reply.choices[0].message.content.strip()
-
-        if clean_response.startswith('"') and clean_response.endswith('"'):
-            clean_response = clean_response[1:-1]
-
-        clean_response = clean_response.replace("\\n", "\n").strip()
-        print("Backend answer sent:", answer)
-        return clean_response
-
+        clean = reply.choices[0].message.content.strip()
+        return clean.strip('"').replace("\\n", "\n")
     except Exception as e:
         return f"An error occurred: {str(e)}"
-
