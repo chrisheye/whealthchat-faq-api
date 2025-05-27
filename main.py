@@ -76,10 +76,11 @@ async def get_faq(request: Request):
         limit=1
     )
 
-    if exact_match.objects:
+    if exact_match.objects and exact_match.objects[0].properties["question"] == q:
         print("✅ Exact match question from DB:", exact_match.objects[0].properties["question"])
     else:
         print("❌ No exact match found.")
+
 
     if exact_match.objects:
         print("✅ Exact match question from DB:", exact_match.objects[0].properties.get("question"))
