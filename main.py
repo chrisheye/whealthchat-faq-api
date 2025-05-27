@@ -29,6 +29,7 @@ client = weaviate.connect_to_wcs(
 
 collection = client.collections.get("FAQ")
 
+
 @app.post("/faq")
 async def get_faq(request: Request):
     body = await request.json()
@@ -39,17 +40,15 @@ async def get_faq(request: Request):
     filters = Filter.by_property("question").equal(q)
     print("🔍 Performing match lookup for:", q)
 
-    exact_match = collection.query.fetch_objects(filters=filters, limit=10)
+    exact_match = collection.query.fetch_objects(
+        filters=filters,
+        limit=1
+    )
 
-    matched_obj = None
-    for obj in exact_match.objects:
-        if obj.properties.get("question", "").strip() == q:
-            matched_obj = obj
-            break
-
-    if matched_obj:
-        print("✅ Exact match question from DB:", matched_obj.properties["question"])
-        props = matched_obj.properties
+    if exact_match.objects:
+        print("✅ Exact match question from DB:", exact_match.objects[0].properties["question"])
+        obj = exact_match.objects[0]
+        props = obj.properties
         answer = props.get("answer", "").strip()
         coaching_tip = props.get("coachingTip", "").strip()
 
@@ -78,12 +77,12 @@ async def get_faq(request: Request):
             if clean_response.startswith('"') and clean_response.endswith('"'):
                 clean_response = clean_response[1:-1]
             clean_response = clean_response.replace("\\n", "\n").strip()
-            return clean_response
+            return clean_response  # ✅ RETURN EARLY
 
         except Exception as e:
             return f"An error occurred: {str(e)}"
 
-    # ✅ Step 2: Vector fallback
+    # ✅ Step 2: Fall back to vector search if no exact match
     response = collection.query.near_text(
         query=q,
         limit=1,
@@ -134,4 +133,3 @@ async def get_faq(request: Request):
 
     except Exception as e:
         return f"An error occurred: {str(e)}"
-
