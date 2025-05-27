@@ -36,7 +36,7 @@ async def get_faq(request: Request):
     print(f"Received question: {q}")
 
     # ✅ Step 1: Exact match check
-    filters = Filter.by_property("question").contains(q)
+    filters = Filter.by_property("question").equal(q)
     print("🔍 Performing match lookup for:", q)
 
     exact_match = collection.query.fetch_objects(filters=filters, limit=10)
