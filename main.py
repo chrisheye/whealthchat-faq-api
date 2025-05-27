@@ -29,55 +29,27 @@ client = weaviate.connect_to_wcs(
 
 collection = client.collections.get("FAQ")
 
-# TEMPORARY: Print all FAQ questions to check for old entries
-limit = 200
-offset = 0
-
-while True:
-    result = collection.query.fetch_objects(limit=limit, offset=offset)
-    objects = result.objects
-
-    if not objects:
-        break
-
-    for obj in objects:
-        print(obj.properties.get("question"))
-
-    offset += limit
-
-print(f"\n📊 Weaviate still holds {len(collection.query.fetch_objects(limit=2000).objects)} FAQ objects.")
-
-# Debug: Check if specific question exists in Weaviate
-print("\n🔎 Checking for 'Do I need a will?' entry...")
-filters = Filter.by_property("question").equal("Do I need a will?")
-result = collection.query.fetch_objects(filters=filters, limit=1)
-
-if result.objects:
-    print("✅ Found:", result.objects[0].properties["question"])
-    print("🧠 Answer:", result.objects[0].properties["answer"])
-else:
-    print("❌ 'Do I need a will?' not found in collection")
-
-
 @app.post("/faq")
 async def get_faq(request: Request):
     body = await request.json()
     q = body.get("query", "").strip()
     print(f"Received question: {q}")
 
-    # ✅ Step 1: Exact match check (case-sensitive)
-    filters = Filter.by_property("question").equal(q)
-    print("🔍 Performing exact match for:", q)
+    # ✅ Step 1: Exact match check
+    filters = Filter.by_property("question").contains(q)
+    print("🔍 Performing match lookup for:", q)
 
-    exact_match = collection.query.fetch_objects(
-        filters=filters,
-        limit=1
-    )
+    exact_match = collection.query.fetch_objects(filters=filters, limit=10)
 
-    if exact_match.objects and exact_match.objects[0].properties["question"] == q:
-        print("✅ Exact match question from DB:", exact_match.objects[0].properties["question"])
-        obj = exact_match.objects[0]
-        props = obj.properties
+    matched_obj = None
+    for obj in exact_match.objects:
+        if obj.properties.get("question", "").strip() == q:
+            matched_obj = obj
+            break
+
+    if matched_obj:
+        print("✅ Exact match question from DB:", matched_obj.properties["question"])
+        props = matched_obj.properties
         answer = props.get("answer", "").strip()
         coaching_tip = props.get("coachingTip", "").strip()
 
@@ -111,16 +83,13 @@ async def get_faq(request: Request):
         except Exception as e:
             return f"An error occurred: {str(e)}"
 
-    # ✅ Step 2: Fall back to vector search if no exact match found
+    # ✅ Step 2: Vector fallback
     response = collection.query.near_text(
         query=q,
         limit=1,
         return_metadata=["distance"]
     )
     print(f"Weaviate response: {response}")
-
-    if response.objects:
-        print("🧠 Vector match question:", response.objects[0].properties.get("question"))
 
     if not response.objects:
         return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
@@ -157,13 +126,12 @@ async def get_faq(request: Request):
             temperature=0.5
         )
         clean_response = reply.choices[0].message.content.strip()
-
         if clean_response.startswith('"') and clean_response.endswith('"'):
             clean_response = clean_response[1:-1]
-
         clean_response = clean_response.replace("\\n", "\n").strip()
         print("Backend answer sent:", answer)
         return clean_response
 
     except Exception as e:
         return f"An error occurred: {str(e)}"
+
