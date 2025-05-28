@@ -23,7 +23,6 @@ client = weaviate.connect_to_wcs(
 
 collection = client.collections.get("FAQ")
 
-
 @app.post("/faq")
 async def get_faq(request: Request):
     body = await request.json()
@@ -32,9 +31,7 @@ async def get_faq(request: Request):
     print(f"✅ Received question: {query}")
 
     # Try to find exact match (case-insensitive)
-    results = collection.query.where(
-        filter={"path": ["question"], "operator": "Equal", "valueText": query}
-    ).with_limit(1).do()
+    results = collection.query.near_text(query=query, limit=5).fetch()
 
     if results.objects:
         obj = results.objects[0]
@@ -42,6 +39,7 @@ async def get_faq(request: Request):
         tip = obj.properties.get("coachingTip", "")
         return {"answer": answer, "coachingTip": tip}
     else:
-        return {"answer": "No exact match found.", "coachingTip": ""}
+        return {"answer": "No match found.", "coachingTip": ""}
+
 
 
