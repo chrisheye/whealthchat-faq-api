@@ -1,9 +1,9 @@
-from weaviate.collections.classes.filters import Filter
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-import os
 import weaviate
+import os
 import openai
+from weaviate.collections.classes.filters import Filter
 
 app = FastAPI()
 
@@ -11,7 +11,7 @@ app = FastAPI()
 def version_check():
     return {"status": "Running", "message": "✅ CORS enabled version"}
 
-# ✅ Allow CORS for frontend
+# Enable CORS for frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://whealthchat.ai"],
@@ -20,7 +20,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ✅ Connect to Weaviate
+# Connect to Weaviate
 client = weaviate.connect_to_wcs(
     cluster_url=os.getenv("WEAVIATE_CLUSTER_URL"),
     auth_credentials=weaviate.auth.AuthApiKey(os.getenv("WEAVIATE_API_KEY")),
@@ -29,111 +29,29 @@ client = weaviate.connect_to_wcs(
 
 collection = client.collections.get("FAQ")
 
-# Optional: Print all FAQ questions (for verification/debugging)
-limit = 200
-offset = 0
-while True:
-    result = collection.query.fetch_objects(limit=limit, offset=offset)
-    objects = result.objects
-    if not objects:
-        break
-    for obj in objects:
-        print(obj.properties.get("question"))
-    offset += limit
-print(f"\nTotal FAQs found: {offset}")
-
 @app.post("/faq")
 async def get_faq(request: Request):
     body = await request.json()
     q = body.get("query", "").strip()
     print(f"✅ Received question: {q}")
 
-    # ✅ Step 1: Exact match check (case-sensitive)
+    # Step 1: Exact match test with debug info
     filters = Filter.by_property("question").equal(q)
-    exact_match = collection.query.fetch_objects(filters=filters, limit=1)
+    print("🔍 Running exact match filter:", filters)
+
+    exact_match = collection.query.fetch_objects(
+        filters=filters,
+        limit=3
+    )
+
+    print("🧠 Exact match results:")
+    for obj in exact_match.objects:
+        print("-", obj.properties.get("question"))
 
     if exact_match.objects:
         obj = exact_match.objects[0]
-        props = obj.properties
-        answer = props.get("answer", "").strip()
-        coaching_tip = props.get("coachingTip", "").strip()
-
-        prompt = (
-            "You are a helpful assistant. Respond using Markdown with consistent formatting.\n"
-            "Do NOT include the word 'Answer:' in your response.\n"
-            "Bold the words 'Coaching Tip:' exactly as shown.\n"
-            "Do not bold any other parts of the answer text.\n"
-            "Keep 'Coaching Tip:' inline with the rest of the text, followed by a colon.\n"
-            "Use line breaks only to separate paragraphs.\n\n"
-            f"Question: {q}\n"
-            f"{answer}\n"
-            f"Coaching Tip: {coaching_tip}"
-        )
-
-        print("✅ Exact match found. Prompt sent to OpenAI:", repr(prompt))
-
-        try:
-            reply = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=400,
-                temperature=0.5
-            )
-            clean_response = reply.choices[0].message.content.strip()
-            if clean_response.startswith('"') and clean_response.endswith('"'):
-                clean_response = clean_response[1:-1]
-            clean_response = clean_response.replace("\\n", "\n").strip()
-            return clean_response
-        except Exception as e:
-            return f"An error occurred: {str(e)}"
-
-    # ✅ Step 2: Fall back to vector search if no exact match
-    response = collection.query.near_text(
-        query=q,
-        limit=1,
-        return_metadata=["distance"]
-    )
-
-    if not response.objects:
-        return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
-
-    print("🧠 Vector match question:", response.objects[0].properties.get("question"))
-
-    obj = response.objects[0]
-    distance = obj.metadata.distance if obj.metadata and hasattr(obj.metadata, "distance") else 1.0
-
-    if distance > 0.6:
-        return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
-
-    props = obj.properties
-    answer = props.get("answer", "").strip()
-    coaching_tip = props.get("coachingTip", "").strip()
-
-    prompt = (
-        "You are a helpful assistant. Respond using Markdown with consistent formatting.\n"
-        "Do NOT include the word 'Answer:' in your response.\n"
-        "Bold the words 'Coaching Tip:' exactly as shown.\n"
-        "Do not bold any other parts of the answer text.\n"
-        "Keep 'Coaching Tip:' inline with the rest of the text, followed by a colon.\n"
-        "Use line breaks only to separate paragraphs.\n\n"
-        f"Question: {q}\n"
-        f"{answer}\n"
-        f"Coaching Tip: {coaching_tip}"
-    )
-
-    print("🤖 Prompt sent to OpenAI (vector fallback):", repr(prompt))
-
-    try:
-        reply = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=400,
-            temperature=0.5
-        )
-        clean_response = reply.choices[0].message.content.strip()
-        if clean_response.startswith('"') and clean_response.endswith('"'):
-            clean_response = clean_response[1:-1]
-        clean_response = clean_response.replace("\\n", "\n").strip()
-        return clean_response
-    except Exception as e:
-        return f"An error occurred: {str(e)}"
+        answer = obj.properties.get("answer", "")
+        tip = obj.properties.get("coachingTip", "")
+        return {"answer": answer, "coachingTip": tip}
+    else:
+        return {"answer": "No exact match found.", "coachingTip": ""}
