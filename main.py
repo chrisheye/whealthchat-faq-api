@@ -1,6 +1,5 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from weaviate.collections.classes.filters import Filter
 import weaviate
 import openai
 import os
@@ -17,7 +16,6 @@ SYSTEM_PROMPT = (
 
 # --- APP SETUP ---
 app = FastAPI()
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://whealthchat.ai"],
@@ -50,40 +48,38 @@ async def get_faq(request: Request):
         raise HTTPException(status_code=400, detail="Missing 'query' in request body.")
     print(f"Received question: {q}")
 
-    # 1. Exact match on questionExact
+    # 1. Exact match in Python
     try:
-        filters = Filter.by_property("question").equal(q)
-        exact = collection.query.fetch_objects(
-            filters=filters,
-            limit=1
+        faqs = (
+            collection.query.get("FAQ", ["question", "answer", "coachingTip"])  
+            .with_limit(2000)
+            .do()["data"]["Get"]["FAQ"]
         )
-        if exact.objects:
-            props = exact.objects[0].properties
-            answer = props.get("answer", "").strip()
-            coaching = props.get("coachingTip", "").strip()
+        for obj in faqs:
+            if obj["question"] == q:
+                answer = obj["answer"].strip()
+                coaching = obj["coachingTip"].strip()
 
-            prompt = (
-                f"{SYSTEM_PROMPT}\n\n"
-                f"Question: {q}\n"
-                f"{answer}\n"
-                f"Coaching Tip: {coaching}"
-            )
-            print("Exact match found. Prompt sent to OpenAI:", repr(prompt))
+                prompt = (
+                    f"{SYSTEM_PROMPT}\n\n"
+                    f"Question: {q}\n"
+                    f"{answer}\n"
+                    f"Coaching Tip: {coaching}"
+                )
+                print("Exact match (Python) found. Prompt sent to OpenAI:", repr(prompt))
 
-            reply = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=400,
-                temperature=0.5
-            )
-            content = reply.choices[0].message.content.strip()
-
-            # unwrap quotes and fix escaped newlines
-            if content.startswith('"') and content.endswith('"'):
-                content = content[1:-1]
-            return content.replace("\\n", "\n").strip()
+                reply = openai.ChatCompletion.create(
+                    model="gpt-4",
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=400,
+                    temperature=0.5
+                )
+                content = reply.choices[0].message.content.strip()
+                if content.startswith('"') and content.endswith('"'):
+                    content = content[1:-1]
+                return content.replace("\\n", "\n").strip()
     except Exception as e:
-        print("Exact-match error:", e)
+        print("Exact-match (Python) error:", e)
 
     # 2. Vector search fallback
     try:
