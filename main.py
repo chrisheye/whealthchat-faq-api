@@ -52,7 +52,7 @@ async def get_faq(request: Request):
 
     # 1. Exact match on questionExact
     try:
-        filters = Filter.by_property("questionExact").equal(q)
+        filters = Filter.by_property("questionExact").equalFold(q)
         exact = collection.query.fetch_objects(
             filters=filters,
             limit=1
