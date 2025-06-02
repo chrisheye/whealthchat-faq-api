@@ -24,13 +24,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- CONNECT TO WEAVIATE & OPENAI ---
-client = weaviate.connect_to_wcs(
-    cluster_url=os.getenv("WEAVIATE_CLUSTER_URL"),
-    auth_credentials=weaviate.auth.AuthApiKey(os.getenv("WEAVIATE_API_KEY")),
-    headers={"X-OpenAI-Api-Key": os.getenv("OPENAI_API_KEY")}
+# --- CONNECT TO WEAVIATE & OPENAI (v3 client) ---
+from weaviate import Client
+from weaviate.auth import AuthApiKey
+
+client = Client(
+    url=os.getenv("WEAVIATE_CLUSTER_URL"),
+    auth_client_secret=AuthApiKey(os.getenv("WEAVIATE_API_KEY")),
+    additional_headers={"X-OpenAI-Api-Key": os.getenv("OPENAI_API_KEY")},
 )
-collection = client.collections.get("FAQ")
+# (no `collection = client.collections.get(...)` in v3)
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
@@ -48,55 +51,63 @@ async def get_faq(request: Request):
         raise HTTPException(status_code=400, detail="Missing 'query' in request body.")
     print(f"Received question: {q}")
 
-    # 1. Exact match in Python
+    # 1. Exact match using a 'where' filter (v3)
     try:
-        faqs = (
-            collection.query.get("FAQ", ["question", "answer", "coachingTip"])  
-            .with_limit(2000)
-            .do()["data"]["Get"]["FAQ"]
+        exact_res = (
+            client.query
+            .get("FAQ", ["question", "answer", "coachingTip"])
+            .with_where({
+                "path": ["question"],
+                "operator": "Equal",
+                "valueText": q
+            })
+            .with_limit(1)
+            .do()
         )
-        for obj in faqs:
-            if obj["question"] == q:
-                answer = obj["answer"].strip()
-                coaching = obj["coachingTip"].strip()
+        faq_list = exact_res.get("data", {}).get("Get", {}).get("FAQ", [])
+        if faq_list:
+            obj = faq_list[0]
+            answer   = obj.get("answer", "").strip()
+            coaching = obj.get("coachingTip", "").strip()
 
-                prompt = (
-                    f"{SYSTEM_PROMPT}\n\n"
-                    f"Question: {q}\n"
-                    f"{answer}\n"
-                    f"Coaching Tip: {coaching}"
-                )
-                print("Exact match (Python) found. Prompt sent to OpenAI:", repr(prompt))
+            prompt = (
+                f"{SYSTEM_PROMPT}\n\n"
+                f"Question: {q}\n"
+                f"{answer}\n"
+                f"Coaching Tip: {coaching}"
+            )
+            print("Exact match found. Prompt sent to OpenAI:", repr(prompt))
 
-                reply = openai.ChatCompletion.create(
-                    model="gpt-4",
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=400,
-                    temperature=0.5
-                )
-                content = reply.choices[0].message.content.strip()
-                if content.startswith('"') and content.endswith('"'):
-                    content = content[1:-1]
-                return content.replace("\\n", "\n").strip()
+            reply = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=400,
+                temperature=0.5
+            )
+            content = reply.choices[0].message.content.strip()
+            if content.startswith('"') and content.endswith('"'):
+                content = content[1:-1]
+            return content.replace("\\n", "\n").strip()
     except Exception as e:
         print("Exact-match (Python) error:", e)
 
-    # 2. Vector search fallback
+    # 2. Vector search fallback (v3 syntax)
     try:
-        response = collection.query.near_text(
-            query=q,
-            limit=1,
-            return_metadata=["distance"]
+        vec_res = (
+            client.query
+            .get("FAQ", ["question", "answer", "coachingTip"])
+            .with_near_text({"concepts": [q]})
+            .with_additional(["distance"])
+            .with_limit(1)
+            .do()
         )
-        print("Weaviate vector response:", response)
-
-        if response.objects:
-            obj = response.objects[0]
-            distance = getattr(obj.metadata, "distance", 1.0)
+        faq_vec_list = vec_res.get("data", {}).get("Get", {}).get("FAQ", [])
+        if faq_vec_list:
+            obj = faq_vec_list[0]
+            distance = obj.get("_additional", {}).get("distance", 1.0)
             if distance <= 0.6:
-                props = obj.properties
-                answer = props.get("answer", "").strip()
-                coaching = props.get("coachingTip", "").strip()
+                answer   = obj.get("answer", "").strip()
+                coaching = obj.get("coachingTip", "").strip()
 
                 prompt = (
                     f"{SYSTEM_PROMPT}\n\n"
