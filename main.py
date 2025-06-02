@@ -51,10 +51,11 @@ async def get_faq(request: Request):
     # 1. Exact match in Python
     try:
         faqs = (
-            collection.query.get("FAQ", ["question", "answer", "coachingTip"])  
+            client.query.get("FAQ", ["question", "answer", "coachingTip"])  
             .with_limit(2000)
             .do()["data"]["Get"]["FAQ"]
         )
+
         for obj in faqs:
             if obj["question"] == q:
                 answer = obj["answer"].strip()
