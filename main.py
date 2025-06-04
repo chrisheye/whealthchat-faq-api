@@ -78,12 +78,19 @@ async def get_faq(request: Request):
             )
             print("Exact match found. Prompt sent to OpenAI:", repr(prompt))
 
-            reply = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=600,
-                temperature=0.5
-            )
+        import time
+        start = time.time()
+        
+        reply = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=600,
+            temperature=0.5
+        )
+        
+        end = time.time()
+        print(f"⏱️ OpenAI response time: {end - start:.2f} seconds")
+
             content = reply.choices[0].message.content.strip()
             if content.startswith('"') and content.endswith('"'):
                 content = content[1:-1]
@@ -120,7 +127,7 @@ async def get_faq(request: Request):
                 reply = openai.ChatCompletion.create(
                     model="gpt-4",
                     messages=[{"role": "user", "content": prompt}],
-                    max_tokens=600,
+                    max_tokens=500,
                     temperature=0.5
                 )
                 content = reply.choices[0].message.content.strip()
