@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import weaviate
 import openai
 import os
+from weaviate import Client
+from weaviate.auth import AuthApiKey
 
 # --- PROMPT TEMPLATES ---
 SYSTEM_PROMPT = (
@@ -24,16 +26,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- CONNECT TO WEAVIATE & OPENAI (v3 client) ---
-from weaviate import Client
-from weaviate.auth import AuthApiKey
-
+# --- CONNECT TO WEAVIATE & OPENAI ---
 client = Client(
     url=os.getenv("WEAVIATE_CLUSTER_URL"),
     auth_client_secret=AuthApiKey(os.getenv("WEAVIATE_API_KEY")),
     additional_headers={"X-OpenAI-Api-Key": os.getenv("OPENAI_API_KEY")},
 )
-# (no `collection = client.collections.get(...)` in v3)
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
@@ -51,7 +49,7 @@ async def get_faq(request: Request):
         raise HTTPException(status_code=400, detail="Missing 'query' in request body.")
     print(f"Received question: {q}")
 
-    # 1. Exact match using a 'where' filter (v3)
+    # 1. Exact match
     try:
         exact_res = (
             client.query
@@ -69,37 +67,12 @@ async def get_faq(request: Request):
             obj = faq_list[0]
             answer   = obj.get("answer", "").strip()
             coaching = obj.get("coachingTip", "").strip()
-
-            prompt = (
-                f"{SYSTEM_PROMPT}\n\n"
-                f"Question: {q}\n"
-                f"{answer}\n"
-                f"Coaching Tip: {coaching}"
-            )
-            print("Exact match found. Prompt sent to OpenAI:", repr(prompt))
-
-            import time
-            start = time.time()
-
-            reply = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=400,
-                temperature=0.5
-            )
-
-            end = time.time()
-            print(f"⏱️ OpenAI response time: {end - start:.2f} seconds")
-
-            content = reply.choices[0].message.content.strip()
-            if content.startswith('"') and content.endswith('"'):
-                content = content[1:-1]
-            return content.replace("\\n", "\n").strip()
-
+            print("✅ Exact match found. Returning answer without OpenAI call.")
+            return f"{answer}\n\n**Coaching Tip:** {coaching}"
     except Exception as e:
         print("Exact-match (Python) error:", e)
 
-    # 2. Vector search fallback (v3 syntax)
+    # 2. Vector search fallback
     try:
         vec_res = (
             client.query
@@ -123,7 +96,10 @@ async def get_faq(request: Request):
                     f"{answer}\n"
                     f"Coaching Tip: {coaching}"
                 )
-                print("Vector match found. Prompt sent to OpenAI:", repr(prompt))
+                print("🌀 Vector match found. Prompt sent to OpenAI:", repr(prompt))
+
+                import time
+                start = time.time()
 
                 reply = openai.ChatCompletion.create(
                     model="gpt-4",
@@ -131,6 +107,10 @@ async def get_faq(request: Request):
                     max_tokens=400,
                     temperature=0.5
                 )
+
+                end = time.time()
+                print(f"⏱️ OpenAI response time: {end - start:.2f} seconds")
+
                 content = reply.choices[0].message.content.strip()
                 if content.startswith('"') and content.endswith('"'):
                     content = content[1:-1]
@@ -138,7 +118,7 @@ async def get_faq(request: Request):
     except Exception as e:
         print("Vector-search error:", e)
 
-    # 3. No match
+    # 3. No match fallback
     return (
         "I do not possess the information to answer that question. "
         "Try asking me something about financial, retirement, estate, or healthcare planning."
