@@ -82,7 +82,7 @@ async def get_faq(request: Request):
             start = time.time()
 
             reply = openai.ChatCompletion.create(
-                model="gpt-4",
+                model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=600,
                 temperature=0.5
