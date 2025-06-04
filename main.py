@@ -81,7 +81,7 @@ async def get_faq(request: Request):
             reply = openai.ChatCompletion.create(
                 model="gpt-4",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=400,
+                max_tokens=600,
                 temperature=0.5
             )
             content = reply.choices[0].message.content.strip()
@@ -120,7 +120,7 @@ async def get_faq(request: Request):
                 reply = openai.ChatCompletion.create(
                     model="gpt-4",
                     messages=[{"role": "user", "content": prompt}],
-                    max_tokens=400,
+                    max_tokens=600,
                     temperature=0.5
                 )
                 content = reply.choices[0].message.content.strip()
