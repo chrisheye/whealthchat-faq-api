@@ -87,7 +87,12 @@ async def get_faq(request: Request):
             .do()
         )
         faq_vec_list = vec_res.get("data", {}).get("Get", {}).get("FAQ", [])
-        print(f"🔍 Vector search returned {len(faq_vec_list)} result(s)")
+        print(f"🔍 Retrieved {len(faq_vec_list)} vector matches:")
+        for i, obj in enumerate(faq_vec_list):
+            q = obj.get("question", "")
+            d = obj.get("_additional", {}).get("distance", "?")
+            print(f"{i+1}. {q} (distance: {d})")
+
         if faq_vec_list:
             obj = faq_vec_list[0]
             distance = obj.get("_additional", {}).get("distance", 1.0)
