@@ -83,7 +83,7 @@ async def get_faq(request: Request):
             .get("FAQ", ["question", "answer", "coachingTip"])
             .with_near_text({"concepts": [q]})
             .with_additional(["distance"])
-            .with_limit(1)
+            .with_limit(3)
             .do()
         )
         faq_vec_list = vec_res.get("data", {}).get("Get", {}).get("FAQ", [])
