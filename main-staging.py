@@ -6,14 +6,15 @@ import os
 from weaviate import Client
 from weaviate.auth import AuthApiKey
 
-# --- PROMPT TEMPLATES ---
+# --- PROMPT TEMPLATE ---
 SYSTEM_PROMPT = (
-    "You are a helpful assistant. Respond using Markdown with consistent formatting.\n"
-    "Do NOT include the word 'Answer:' in your response.\n"
-    "Bold the words 'Coaching Tip:' exactly as shown.\n"
-    "Do not bold any other parts of the answer text.\n"
-    "Keep 'Coaching Tip:' inline with the rest of the text, followed by a colon.\n"
-    "Use line breaks only to separate paragraphs."
+    "You are a helpful assistant. Use the question and the related answers to create a concise, unified summary.
+"
+    "Format using Markdown. Bold the words 'Coaching Tip:' but nothing else.
+"
+    "If answers conflict or overlap, synthesize the most important ideas into a clear and accurate response.
+"
+    "Add only one Coaching Tip at the end, drawing from the tips provided."
 )
 
 # --- APP SETUP ---
@@ -21,8 +22,8 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-    "https://whealthchat.ai",
-    "https://staging.whealthchat.ai"
+        "https://whealthchat.ai",
+        "https://staging.whealthchat.ai"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -41,7 +42,7 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 # --- HEALTH CHECK ---
 @app.get("/version")
 def version_check():
-    return {"status": "Running", "message": "✅ CORS enabled version"}
+    return {"status": "Running", "message": "✅ Staging with multi-answer summarization"}
 
 # --- FAQ ENDPOINT ---
 @app.post("/faq")
@@ -57,71 +58,70 @@ async def get_faq(request: Request):
         exact_res = (
             client.query
             .get("FAQ", ["question", "answer", "coachingTip"])
-            .with_where({
-                "path": ["question"],
-                "operator": "Equal",
-                "valueText": q
-            })
-            .with_limit(3)
+            .with_where({"path": ["question"], "operator": "Equal", "valueText": q})
+            .with_limit(1)
             .do()
         )
         faq_list = exact_res.get("data", {}).get("Get", {}).get("FAQ", [])
         if faq_list:
             obj = faq_list[0]
-            answer   = obj.get("answer", "").strip()
+            answer = obj.get("answer", "").strip()
             coaching = obj.get("coachingTip", "").strip()
             print("✅ Exact match found. Returning answer without OpenAI call.")
             return f"{answer}\n\n**Coaching Tip:** {coaching}"
     except Exception as e:
-        print("Exact-match (Python) error:", e)
+        print("Exact-match error:", e)
 
-    # 2. Vector search fallback
+    # 2. Vector fallback with summary of top 3
     try:
         vec_res = (
             client.query
             .get("FAQ", ["question", "answer", "coachingTip"])
             .with_near_text({"concepts": [q]})
             .with_additional(["distance"])
-            .with_limit(1)
+            .with_limit(3)
             .do()
         )
-        faq_vec_list = vec_res.get("data", {}).get("Get", {}).get("FAQ", [])
-        if faq_vec_list:
-            obj = faq_vec_list[0]
-            distance = obj.get("_additional", {}).get("distance", 1.0)
-            if distance <= 0.6:
-                answer   = obj.get("answer", "").strip()
-                coaching = obj.get("coachingTip", "").strip()
+        faq_list = vec_res.get("data", {}).get("Get", {}).get("FAQ", [])
+        if not faq_list:
+            raise ValueError("No vector matches found.")
 
-                prompt = (
-                    f"{SYSTEM_PROMPT}\n\n"
-                    f"Question: {q}\n"
-                    f"{answer}\n"
-                    f"Coaching Tip: {coaching}"
-                )
-                print("🌀 Vector match found. Prompt sent to OpenAI:", repr(prompt))
+        combined_answers = ""
+        combined_tips = ""
+        for i, obj in enumerate(faq_list, 1):
+            a = obj.get("answer", "").strip()
+            t = obj.get("coachingTip", "").strip()
+            combined_answers += f"Answer {i}: {a}\n"
+            combined_tips += f"Coaching Tip {i}: {t}\n"
 
-                import time
-                start = time.time()
+        prompt = (
+            f"{SYSTEM_PROMPT}\n\n"
+            f"Question: {q}\n\n"
+            f"{combined_answers}\n"
+            f"{combined_tips}"
+        )
 
-                reply = openai.ChatCompletion.create(
-                    model="gpt-4",
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=400,
-                    temperature=0.5
-                )
+        print("🌀 Sending multi-answer summary prompt to OpenAI")
+        import time
+        start = time.time()
+        reply = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=500,
+            temperature=0.5
+        )
+        end = time.time()
+        print(f"⏱️ OpenAI response time: {end - start:.2f} seconds")
 
-                end = time.time()
-                print(f"⏱️ OpenAI response time: {end - start:.2f} seconds")
+        content = reply.choices[0].message.content.strip()
+        if content.startswith('"') and content.endswith('"'):
+            content = content[1:-1]
+        return content.replace("\\n", "\n").strip()
 
-                content = reply.choices[0].message.content.strip()
-                if content.startswith('"') and content.endswith('"'):
-                    content = content[1:-1]
-                return content.replace("\\n", "\n").strip()
     except Exception as e:
-        print("Vector-search error:", e)
+        print("Vector-summary error:", e)
 
-    # 3. No match fallback
+    # 3. No match
     return (
         "I do not possess the information to answer that question. "
         "Try asking me something about financial, retirement, estate, or healthcare planning."
