@@ -66,6 +66,7 @@ async def get_faq(request: Request):
             .do()
         )
         faq_list = exact_res.get("data", {}).get("Get", {}).get("FAQ", [])
+        print(f"🔍 Exact match returned {len(faq_list)} result(s)")
         if faq_list:
             obj = faq_list[0]
             answer   = obj.get("answer", "").strip()
@@ -86,6 +87,7 @@ async def get_faq(request: Request):
             .do()
         )
         faq_vec_list = vec_res.get("data", {}).get("Get", {}).get("FAQ", [])
+        print(f"🔍 Vector search returned {len(faq_vec_list)} result(s)")
         if faq_vec_list:
             obj = faq_vec_list[0]
             distance = obj.get("_additional", {}).get("distance", 1.0)
