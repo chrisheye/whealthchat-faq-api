@@ -20,10 +20,7 @@ SYSTEM_PROMPT = (
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-    "https://whealthchat.ai",
-    "https://staging.whealthchat.ai"
-    ],
+    allow_origins=["https://whealthchat.ai"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
