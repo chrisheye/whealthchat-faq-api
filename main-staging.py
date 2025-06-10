@@ -69,12 +69,18 @@ async def get_faq(request: Request):
         )
         faq_list = exact_res.get("data", {}).get("Get", {}).get("FAQ", [])
         print(f"🔍 Exact match returned {len(faq_list)} result(s)")
-        if faq_list:
-            obj = faq_list[0]
-            answer   = obj.get("answer", "").strip()
-            coaching = obj.get("coachingTip", "").strip()
-            print("✅ Exact match found. Returning answer without OpenAI call.")
+
+        # Manually confirm strict equality
+        strict_match = next((obj for obj in faq_list if obj.get("question", "").strip() == q.strip()), None)
+
+        if strict_match:
+            print("✅ Exact match confirmed. Returning answer without OpenAI call.")
+            answer   = strict_match.get("answer", "").strip()
+            coaching = strict_match.get("coachingTip", "").strip()
             return f"{answer}\n\n**Coaching Tip:** {coaching}"
+        else:
+            print("⚠️ No strict match found. Will proceed to vector search.")
+
     except Exception as e:
         print("Exact-match (Python) error:", e)
 
