@@ -88,6 +88,22 @@ async def get_faq(request: Request):
         )
         faq_vec_list = vec_res.get("data", {}).get("Get", {}).get("FAQ", [])
         print(f"🔍 Retrieved {len(faq_vec_list)} vector matches:")
+        from rapidfuzz import fuzz
+
+        # Deduplicate based on question similarity
+        unique_faqs = []
+        questions_seen = []
+
+        for obj in faq_vec_list:
+            q_text = obj.get("question", "").strip()
+            is_duplicate = any(fuzz.ratio(q_text, seen_q) > 90 for seen_q in questions_seen)
+            if not is_duplicate:
+                unique_faqs.append(obj)
+                questions_seen.append(q_text)
+
+        faq_vec_list = unique_faqs
+        print(f"🧹 After deduplication: {len(faq_vec_list)} match(es) kept.")
+
         for i, obj in enumerate(faq_vec_list):
             q = obj.get("question", "")
             d = obj.get("_additional", {}).get("distance", "?")
