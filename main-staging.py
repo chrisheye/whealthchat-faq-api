@@ -19,6 +19,7 @@ SYSTEM_PROMPT = (
     "Avoid clinical or robotic phrasing. Use gentle, encouraging language that helps the user feel heard and empowered.\n"
     "Show empathy through wording — not by pretending to be human, but by offering reassurance and thoughtful framing of difficult issues.\n"
     "If multiple Coaching Tips are provided, summarize them into ONE final Coaching Tip for the user."
+    "If a long-term care calculator is mentioned, refer only to the custom calculator provided by WhealthChat — not generic online tools."
 )
 
 
