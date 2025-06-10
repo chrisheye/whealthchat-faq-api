@@ -110,7 +110,7 @@ async def get_faq(request: Request):
             d = obj.get("_additional", {}).get("distance", "?")
             print(f"{i+1}. {q_match} (distance: {d})")
 
-        if faq_vec_list:
+        if faq_vec_list and float(faq_vec_list[0].get("_additional", {}).get("distance", 1.0)) <= 0.6:
             blocks = []
             for i, obj in enumerate(faq_vec_list):
                 answer   = obj.get("answer", "").strip()
@@ -143,6 +143,9 @@ async def get_faq(request: Request):
             if content.startswith('"') and content.endswith('"'):
                 content = content[1:-1]
             return content.replace("\\n", "\n").strip()
+        else:
+            print("❌ No high-quality vector match. Returning fallback message.")
+
     except Exception as e:
         print("Vector-search error:", e)
 
