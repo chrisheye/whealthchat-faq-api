@@ -13,7 +13,7 @@ SYSTEM_PROMPT = (
     "Bold the words 'Coaching Tip:' exactly as shown.\n"
     "Do not bold any other parts of the answer text.\n"
     "Keep 'Coaching Tip:' inline with the rest of the text, followed by a colon.\n"
-    "Use line breaks only to separate paragraphs.\n"
+    "Use line breaks to break long answers into clear, readable paragraphs.\n"
     "If multiple Coaching Tips are provided, summarize them into ONE final Coaching Tip for the user.\n"
     "Preserve all emojis in both the answer and the Coaching Tip exactly as they appear in the source material."
 )
