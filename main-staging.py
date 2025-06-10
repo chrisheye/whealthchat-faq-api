@@ -15,6 +15,7 @@ SYSTEM_PROMPT = (
     "Keep 'Coaching Tip:' inline with the rest of the text, followed by a colon.\n"
     "Use line breaks to break long answers into clear, readable paragraphs.\n"
     "If multiple Coaching Tips are provided, summarize them into ONE final Coaching Tip for the user.\n"
+    "Do not include links or file references in the Coaching Tip section. Keep all such content in the main answer only.\n"
     "Preserve all emojis in both the answer and the Coaching Tip exactly as they appear in the source material."
 )
 
