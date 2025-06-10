@@ -76,7 +76,7 @@ async def get_faq(request: Request):
     except Exception as e:
         print("Exact-match (Python) error:", e)
 
-    # 2. Vector search fallback
+    # 2. Vector search fallback with summarization
     try:
         vec_res = (
             client.query
@@ -88,9 +88,8 @@ async def get_faq(request: Request):
         )
         faq_vec_list = vec_res.get("data", {}).get("Get", {}).get("FAQ", [])
         print(f"🔍 Retrieved {len(faq_vec_list)} vector matches:")
-        from rapidfuzz import fuzz
 
-        # Deduplicate based on question similarity
+        from rapidfuzz import fuzz
         unique_faqs = []
         questions_seen = []
 
@@ -105,42 +104,43 @@ async def get_faq(request: Request):
         print(f"🧹 After deduplication: {len(faq_vec_list)} match(es) kept.")
 
         for i, obj in enumerate(faq_vec_list):
-            q = obj.get("question", "")
+            q_match = obj.get("question", "")
             d = obj.get("_additional", {}).get("distance", "?")
-            print(f"{i+1}. {q} (distance: {d})")
+            print(f"{i+1}. {q_match} (distance: {d})")
 
         if faq_vec_list:
-            obj = faq_vec_list[0]
-            distance = obj.get("_additional", {}).get("distance", 1.0)
-            if distance <= 0.6:
+            blocks = []
+            for i, obj in enumerate(faq_vec_list):
                 answer   = obj.get("answer", "").strip()
                 coaching = obj.get("coachingTip", "").strip()
+                blocks.append(f"Answer {i+1}:\n{answer}\n\nCoaching Tip {i+1}: {coaching}")
+            combined = "\n\n---\n\n".join(blocks)
 
-                prompt = (
-                    f"{SYSTEM_PROMPT}\n\n"
-                    f"Question: {q}\n"
-                    f"{answer}\n"
-                    f"Coaching Tip: {coaching}"
-                )
-                print("🌀 Vector match found. Prompt sent to OpenAI:", repr(prompt))
+            prompt = (
+                f"{SYSTEM_PROMPT}\n\n"
+                f"Question: {q}\n\n"
+                f"Here are multiple answers and coaching tips from similar questions. "
+                f"Summarize them into a single helpful response for the user:\n\n{combined}"
+            )
+            print("🌀 Vector match found. Prompt sent to OpenAI:\n", repr(prompt))
 
-                import time
-                start = time.time()
+            import time
+            start = time.time()
 
-                reply = openai.ChatCompletion.create(
-                    model="gpt-4",
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=400,
-                    temperature=0.5
-                )
+            reply = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=500,
+                temperature=0.5
+            )
 
-                end = time.time()
-                print(f"⏱️ OpenAI response time: {end - start:.2f} seconds")
+            end = time.time()
+            print(f"⏱️ OpenAI response time: {end - start:.2f} seconds")
 
-                content = reply.choices[0].message.content.strip()
-                if content.startswith('"') and content.endswith('"'):
-                    content = content[1:-1]
-                return content.replace("\\n", "\n").strip()
+            content = reply.choices[0].message.content.strip()
+            if content.startswith('"') and content.endswith('"'):
+                content = content[1:-1]
+            return content.replace("\\n", "\n").strip()
     except Exception as e:
         print("Vector-search error:", e)
 
