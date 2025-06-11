@@ -67,6 +67,8 @@ async def get_faq(request: Request):
 
     # 1. Exact match
     try:
+        print(f"🔎 Checking exact match for normalized question: {q}")
+        
         exact_res = (
             client.query
             .get("FAQ", ["question", "answer", "coachingTip"])
