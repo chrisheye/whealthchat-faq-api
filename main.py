@@ -121,11 +121,10 @@ async def get_faq(request: Request):
 
         if faq_vec_list and float(faq_vec_list[0].get("_additional", {}).get("distance", 1.0)) <= 0.6:
             blocks = []
-            for i, obj in enumerate(faq_vec_list):
+            for i, obj in enumerate(faq_vec_list): 
                 answer = obj.get("answer", "").strip()
                 coaching = obj.get("coachingTip", "").strip()
-                blocks.append(f"Answer {i+1}:
-{answer}\n\nCoaching Tip {i+1}: {coaching}")
+                blocks.append(f"Answer {i+1}:\n{answer}\n\nCoaching Tip {i+1}: {coaching}")
 
             combined = "\n\n---\n\n".join(blocks)
             prompt = (
