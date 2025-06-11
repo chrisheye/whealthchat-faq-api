@@ -3,8 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 import weaviate
 import openai
 import os
+import re
 from weaviate import Client
 from weaviate.auth import AuthApiKey
+from rapidfuzz import fuzz
+import time
 
 # --- PROMPT TEMPLATES ---
 SYSTEM_PROMPT = (
@@ -24,15 +27,11 @@ SYSTEM_PROMPT = (
     "If a long-term care calculator is mentioned, refer only to the custom calculator provided by WhealthChat — not generic online tools."
 )
 
-
 # --- APP SETUP ---
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://whealthchat.ai",
-        "https://staging.whealthchat.ai"
-    ],
+    allow_origins=["https://whealthchat.ai", "https://staging.whealthchat.ai"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -56,39 +55,32 @@ def version_check():
 @app.post("/faq")
 async def get_faq(request: Request):
     body = await request.json()
-    import re
-
     raw_q = body.get("query", "").strip()
-    q = re.sub(r"[^\w\s]", "", raw_q).lower().strip()
+    q_norm = re.sub(r"[^\w\s]", "", raw_q).lower()
 
-    if not q:
+    if not raw_q:
         raise HTTPException(status_code=400, detail="Missing 'query' in request body.")
-    print(f"Received question: {q}")
+
+    print(f"Received question: {raw_q}")
+    print(f"🔎 Checking exact match for normalized question: {q_norm}")
 
     # 1. Exact match
     try:
-        print(f"🔎 Checking exact match for normalized question: {q}")
-        
         exact_res = (
             client.query
             .get("FAQ", ["question", "answer", "coachingTip"])
-            .with_where({
-                "path": ["question"],
-                "operator": "Equal",
-                "valueText": q
-            })
+            .with_where({"path": ["question"], "operator": "Equal", "valueText": q_norm})
             .with_limit(3)
             .do()
         )
         faq_list = exact_res.get("data", {}).get("Get", {}).get("FAQ", [])
         print(f"🔍 Exact match returned {len(faq_list)} result(s)")
 
-        # Manually confirm strict equality
-        strict_match = next((obj for obj in faq_list if obj.get("question", "").strip() == q.strip()), None)
+        strict_match = next((obj for obj in faq_list if re.sub(r"[^\w\s]", "", obj.get("question", "")).lower().strip() == q_norm), None)
 
         if strict_match:
             print("✅ Exact match confirmed. Returning answer without OpenAI call.")
-            answer   = strict_match.get("answer", "").strip()
+            answer = strict_match.get("answer", "").strip()
             coaching = strict_match.get("coachingTip", "").strip()
             return f"{answer}\n\n**Coaching Tip:** {coaching}"
         else:
@@ -102,7 +94,7 @@ async def get_faq(request: Request):
         vec_res = (
             client.query
             .get("FAQ", ["question", "answer", "coachingTip"])
-            .with_near_text({"concepts": [q]})
+            .with_near_text({"concepts": [raw_q]})
             .with_additional(["distance"])
             .with_limit(3)
             .do()
@@ -110,10 +102,8 @@ async def get_faq(request: Request):
         faq_vec_list = vec_res.get("data", {}).get("Get", {}).get("FAQ", [])
         print(f"🔍 Retrieved {len(faq_vec_list)} vector matches:")
 
-        from rapidfuzz import fuzz
         unique_faqs = []
         questions_seen = []
-
         for obj in faq_vec_list:
             q_text = obj.get("question", "").strip()
             is_duplicate = any(fuzz.ratio(q_text, seen_q) > 90 for seen_q in questions_seen)
@@ -122,7 +112,7 @@ async def get_faq(request: Request):
                 questions_seen.append(q_text)
 
         faq_vec_list = unique_faqs
-        print(f"🧹 After deduplication: {len(faq_vec_list)} match(es) kept.")
+        print(f"🪩 After deduplication: {len(faq_vec_list)} match(es) kept.")
 
         for i, obj in enumerate(faq_vec_list):
             q_match = obj.get("question", "")
@@ -132,29 +122,26 @@ async def get_faq(request: Request):
         if faq_vec_list and float(faq_vec_list[0].get("_additional", {}).get("distance", 1.0)) <= 0.6:
             blocks = []
             for i, obj in enumerate(faq_vec_list):
-                answer   = obj.get("answer", "").strip()
+                answer = obj.get("answer", "").strip()
                 coaching = obj.get("coachingTip", "").strip()
-                blocks.append(f"Answer {i+1}:\n{answer}\n\nCoaching Tip {i+1}: {coaching}")
-            combined = "\n\n---\n\n".join(blocks)
+                blocks.append(f"Answer {i+1}:
+{answer}\n\nCoaching Tip {i+1}: {coaching}")
 
+            combined = "\n\n---\n\n".join(blocks)
             prompt = (
                 f"{SYSTEM_PROMPT}\n\n"
-                f"Question: {q}\n\n"
-                f"Here are multiple answers and coaching tips from similar questions. "
-                f"Summarize them into a single helpful response for the user:\n\n{combined}"
+                f"Question: {raw_q}\n\n"
+                f"Here are multiple answers and coaching tips from similar questions. Summarize them into a single helpful response for the user:\n\n{combined}"
             )
+
             print("🌀 Vector match found. Prompt sent to OpenAI:\n", repr(prompt))
-
-            import time
             start = time.time()
-
             reply = openai.ChatCompletion.create(
                 model="gpt-4",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=500,
                 temperature=0.5
             )
-
             end = time.time()
             print(f"⏱️ OpenAI response time: {end - start:.2f} seconds")
 
