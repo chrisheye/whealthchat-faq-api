@@ -56,7 +56,11 @@ def version_check():
 @app.post("/faq")
 async def get_faq(request: Request):
     body = await request.json()
-    q = body.get("query", "").strip()
+    import re
+
+    raw_q = body.get("query", "").strip()
+    q = re.sub(r"[^\w\s]", "", raw_q).lower().strip()
+
     if not q:
         raise HTTPException(status_code=400, detail="Missing 'query' in request body.")
     print(f"Received question: {q}")
