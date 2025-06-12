@@ -24,6 +24,7 @@ SYSTEM_PROMPT = (
     "**If the original answers include links or downloads (e.g., checklists or tools), make sure to include those links in the final summarized answer. Do not omit them.**"
     "**Do not include links, downloads, or tools in the Coaching Tip — those must go in the main answer only.**\n"
     "**Preserve bold formatting from the source answers wherever it appears in the summary.**\n"
+    "Always keep the phrase “**Never worry alone**” in bold exactly as shown, even when rewriting or summarizing content."
     "If multiple Coaching Tips are provided, summarize them into ONE final Coaching Tip for the user."
     "If a long-term care calculator is mentioned, refer only to the custom calculator provided by WhealthChat — not generic online tools."
 )
