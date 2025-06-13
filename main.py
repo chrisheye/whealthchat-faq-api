@@ -102,9 +102,10 @@ async def get_faq(request: Request):
             return f"{answer}\n\n**Coaching Tip:** {coaching}"
         else:
             print("⚠️ No strict match found. Will proceed to vector search.")
+    
+    except Exception as e:
+        print("Exact-match error:", e)
 
-except Exception as e:
-    print("Exact-match error:", e)
 
 
     # 2. Vector search fallback with summarization
