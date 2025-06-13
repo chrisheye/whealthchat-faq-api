@@ -80,33 +80,31 @@ async def get_faq(request: Request):
 
     # 1. Exact match
     try:
-        # Pull all FAQs so we can compare normalized text
-        all_faqs = (
+        normalized = re.sub(r"[^\w\s]", "", raw_q).lower().strip()
+    
+        exact_res = (
             client.query
             .get("FAQ", ["question", "answer", "coachingTip"])
-            .with_limit(500)  # Adjust based on your total count
+            .with_where({"path": ["question"], "operator": "Equal", "valueText": raw_q.strip()})
+            .with_limit(3)
             .do()
         )
-        faq_list = all_faqs.get("data", {}).get("Get", {}).get("FAQ", [])
+        faq_list = exact_res.get("data", {}).get("Get", {}).get("FAQ", [])
     
-        clean_q = normalize(raw_q)
-        strict_match = next(
-            (obj for obj in faq_list if normalize(obj.get("question", "")) == clean_q),
-            None
-        )
+        for obj in faq_list:
+            db_q = obj.get("question", "").strip()
+            db_q_norm = re.sub(r"[^\w\s]", "", db_q).lower().strip()
     
-        if strict_match:
-            print("✅ Exact match confirmed. Returning answer without OpenAI call.")
-            answer = strict_match.get("answer", "").strip()
-            coaching = strict_match.get("coachingTip", "").strip()
-            return f"{answer}\n\n**Coaching Tip:** {coaching}"
-        else:
-            print("⚠️ No strict match found. Will proceed to vector search.")
+            if db_q_norm == normalized:
+                print("✅ Exact match confirmed.")
+                answer = obj.get("answer", "").strip()
+                coaching = obj.get("coachingTip", "").strip()
+                return f"{answer}\n\n**Coaching Tip:** {coaching}"
+    
+        print("⚠️ No strict match. Proceeding to vector search.")
     
     except Exception as e:
         print("Exact-match error:", e)
-
-
 
     # 2. Vector search fallback with summarization
     try:
