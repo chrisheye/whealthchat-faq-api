@@ -9,7 +9,6 @@ from weaviate.auth import AuthApiKey
 from rapidfuzz import fuzz
 import time
 
-# --- PROMPT TEMPLATES ---
 SYSTEM_PROMPT = (
     "You are a helpful assistant. Respond using Markdown with consistent formatting.\n"
     "Do NOT include the word 'Answer:' in your response.\n"
@@ -24,10 +23,11 @@ SYSTEM_PROMPT = (
     "**If the original answers include links or downloads (e.g., checklists or tools), make sure to include those links in the final summarized answer. Do not omit them.**"
     "**Do not include links, downloads, or tools in the Coaching Tip — those must go in the main answer only.**\n"
     "**Preserve bold formatting from the source answers wherever it appears in the summary.**\n"
-    "Always keep the phrase “**Never worry alone**” in bold exactly as shown, even when rewriting or summarizing content."
+    "When appropriate, encourage users not to isolate themselves when facing difficult decisions. You may include the phrase **never worry alone** (in bold). Use sentence case unless it begins a sentence. Do not use the phrase in every response—only when it is contextually appropriate and feels natural.\n"
     "If multiple Coaching Tips are provided, summarize them into ONE final Coaching Tip for the user."
     "If a long-term care calculator is mentioned, refer only to the custom calculator provided by WhealthChat — not generic online tools."
 )
+
 def normalize(text):
     return (
         text.lower()
