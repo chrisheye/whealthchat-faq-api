@@ -28,6 +28,18 @@ SYSTEM_PROMPT = (
     "If multiple Coaching Tips are provided, summarize them into ONE final Coaching Tip for the user."
     "If a long-term care calculator is mentioned, refer only to the custom calculator provided by WhealthChat — not generic online tools."
 )
+def normalize(text):
+    return (
+        text.lower()
+            .strip()
+            .replace("’", "'")
+            .replace("‘", "'")
+            .replace("“", '"')
+            .replace("”", '"')
+            .replace("—", "-")
+            .replace("–", "-")
+            .replace("…", "...")
+    )
 
 # --- APP SETUP ---
 app = FastAPI()
@@ -68,18 +80,21 @@ async def get_faq(request: Request):
 
     # 1. Exact match
     try:
-        exact_res = (
+        # Pull all FAQs so we can compare normalized text
+        all_faqs = (
             client.query
             .get("FAQ", ["question", "answer", "coachingTip"])
-            .with_where({"path": ["question"], "operator": "Equal", "valueText": q_norm})
-            .with_limit(3)
+            .with_limit(500)  # Adjust based on your total count
             .do()
         )
-        faq_list = exact_res.get("data", {}).get("Get", {}).get("FAQ", [])
-        print(f"🔍 Exact match returned {len(faq_list)} result(s)")
-
-        strict_match = next((obj for obj in faq_list if re.sub(r"[^\w\s]", "", obj.get("question", "")).lower().strip() == q_norm), None)
-
+        faq_list = all_faqs.get("data", {}).get("Get", {}).get("FAQ", [])
+    
+        clean_q = normalize(raw_q)
+        strict_match = next(
+            (obj for obj in faq_list if normalize(obj.get("question", "")) == clean_q),
+            None
+        )
+    
         if strict_match:
             print("✅ Exact match confirmed. Returning answer without OpenAI call.")
             answer = strict_match.get("answer", "").strip()
@@ -88,8 +103,9 @@ async def get_faq(request: Request):
         else:
             print("⚠️ No strict match found. Will proceed to vector search.")
 
-    except Exception as e:
-        print("Exact-match (Python) error:", e)
+except Exception as e:
+    print("Exact-match error:", e)
+
 
     # 2. Vector search fallback with summarization
     try:
