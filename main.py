@@ -101,9 +101,17 @@ async def get_faq(request: Request):
                 "operator": "And",
                 "operands": [
                     {"path": ["question"], "operator": "Equal", "valueText": raw_q.strip()},
-                    {"path": ["user"], "operator": "Equal", "valueText": requested_user}
+                    {
+                        "path": ["user"],
+                        "operator": "Or",
+                        "operands": [
+                            {"operator": "Equal", "valueText": "both"},
+                            {"operator": "Equal", "valueText": requested_user}
+                        ]
+                    }
                 ]
             })
+
             .with_limit(3)
             .do()
         )
@@ -132,8 +140,11 @@ async def get_faq(request: Request):
             .get("FAQ", ["question", "answer", "coachingTip"])
             .with_where({
                 "path": ["user"],
-                "operator": "Equal",
-                "valueText": requested_user
+                "operator": "Or",
+                "operands": [
+                    {"operator": "Equal", "valueText": "both"},
+                    {"operator": "Equal", "valueText": requested_user}
+                ]
             })
             .with_near_text({"concepts": [raw_q]})
             .with_additional(["distance"])
