@@ -5,3 +5,4 @@ python-Levenshtein
 openai==0.28.1
 weaviate-client==4.16.1
 rapidfuzz==3.6.1
+# force rebuild
