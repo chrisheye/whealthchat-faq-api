@@ -78,6 +78,8 @@ def version_check():
 @app.post("/faq")
 async def get_faq(request: Request):
     body = await request.json()
+    user_type = body.get("user", "").strip().lower()
+    print(f"👤 User type: {user_type}")
     raw_q = body.get("query", "").strip()
     requested_user = body.get("user", "").strip().lower()
     q_norm = re.sub(r"[^\w\s]", "", raw_q).lower()
