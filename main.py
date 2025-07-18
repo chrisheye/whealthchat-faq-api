@@ -1,33 +1,15 @@
-from fastapi import FastAPI, Request
+import weaviate; print("✅ weaviate version:", weaviate.__version__)
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import weaviate
 from weaviate.classes.query import Filter
-from weaviate.classes.config import Configure
-from openai import OpenAI
+from weaviate.classes.init import AdditionalConfig
+from weaviate.auth import AuthApiKey
+import weaviate
+import openai
 import os
-
-app = FastAPI()
-
-# Allow CORS from any origin (adjust for production if needed)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Initialize Weaviate v4 client
-client = weaviate.WeaviateClient(
-    url=os.getenv("WEAVIATE_URL"),
-    auth_client_secret=weaviate.auth.AuthApiKey(api_key=os.getenv("WEAVIATE_API_KEY")),
-    headers={"X-OpenAI-Api-Key": os.getenv("OPENAI_API_KEY")},
-)
-
-collection = client.collections.get("whealthchat-faqs")
-
-# Initialize OpenAI
-openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+import re
+from rapidfuzz import fuzz
+import time
 
 SYSTEM_PROMPT = (
     "You are a helpful assistant. Respond using Markdown with consistent formatting.\n"
@@ -39,63 +21,168 @@ SYSTEM_PROMPT = (
     "Preserve all emojis in both the answer and the Coaching Tip exactly as they appear in the source material.\n"
     "Use a warm, supportive tone that acknowledges the emotional weight of sensitive topics like aging, illness, or financial stress.\n"
     "Avoid clinical or robotic phrasing. Use gentle, encouraging language that helps the user feel heard and empowered.\n"
-    "Show empathy through wording — not by pretending to be human, but by offering clarity, calm, and actionable suggestions."
+    "Show empathy through wording — not by pretending to be human, but by offering reassurance and thoughtful framing of difficult issues.\n"
+    "**If the original answers include links or downloads (e.g., checklists or tools), make sure to include those links in the final summarized answer. Do not omit them.**"
+    "**Do not include links, downloads, or tools in the Coaching Tip — those must go in the main answer only.**\n"
+    "**Preserve bold formatting from the source answers wherever it appears in the summary.**\n"
+    "When appropriate, encourage users not to isolate themselves when facing difficult decisions. You may include the phrase **never worry alone** (in bold). Use sentence case unless it begins a sentence. Do not use the phrase in every response—only when it is contextually appropriate and feels natural.\n"
+    "If multiple Coaching Tips are provided, summarize them into ONE final Coaching Tip for the user."
+    "If a long-term care calculator is mentioned, refer only to the custom calculator provided by WhealthChat — not generic online tools."
 )
 
+def normalize(text):
+    return (
+        text.lower()
+            .strip()
+            .replace("’", "'")
+            .replace("‘", "'")
+            .replace("“", '"')
+            .replace("”", '"')
+            .replace("—", "-")
+            .replace("–", "-")
+            .replace("…", "...")
+    )
+
+# --- APP SETUP ---
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://whealthchat.ai", "https://staging.whealthchat.ai"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+WEAVIATE_CLUSTER_URL = os.getenv("WEAVIATE_CLUSTER_URL")
+WEAVIATE_API_KEY = os.getenv("WEAVIATE_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+client = weaviate.connect_to_wcs(
+    cluster_url=WEAVIATE_CLUSTER_URL,
+    auth_credentials=AuthApiKey(WEAVIATE_API_KEY),
+    additional_config=AdditionalConfig(grpc_port_experimental=50051)
+)
+
+openai.api_key = OPENAI_API_KEY
+collection = client.collections.get("whealthchat-faqs")
+
+# --- HEALTH CHECK ---
+@app.get("/version")
+def version_check():
+    return {"status": "Running", "message": "✅ CORS enabled version"}
+
+# --- FAQ ENDPOINT ---
 @app.post("/faq")
 async def get_faq(request: Request):
-    data = await request.json()
-    q = data.get("query", "").strip()
-    user_type = data.get("user", "consumer")
+    body = await request.json()
+    raw_q = body.get("query", "").strip()
+    requested_user = body.get("user", "").strip().lower()
+    q_norm = re.sub(r"[^\w\s]", "", raw_q).lower()
 
-    if not q:
-        return "Please enter a valid question."
+    if not raw_q:
+        raise HTTPException(status_code=400, detail="Missing 'query' in request body.")
 
-    normalized_q = q.lower().strip("?").strip()
-    print(f"👤 User type: {user_type}")
-    print(f"Received question: {q}")
-    print(f"🔎 Checking exact match for normalized question: {normalized_q}")
+    print(f"👤 User type: {requested_user}")
+    print(f"Received question: {raw_q}")
+    print(f"🔎 Checking exact match for normalized question: {q_norm}")
 
+    # 1. Exact match
     try:
-        exact_match = collection.query.fetch_objects(
-            filters=Filter.by_property("question").equal(normalized_q)
-            .and_filter(Filter.by_property("user").any_of([user_type, "both"]))
+        filter = Filter.by_property("question").equal(raw_q.strip()) & (
+            Filter.by_property("user").equal("both") | Filter.by_property("user").equal(requested_user)
         )
-        if exact_match.objects:
-            print("✅ Exact match found")
-            obj = exact_match.objects[0].properties
-        else:
-            print("⚠️ No exact match. Trying vector search...")
-            vector_match = collection.query.near_text(
-                query=Configure.near_text(concepts=[q]),
-                filters=Filter.by_property("user").any_of([user_type, "both"]),
-                limit=1,
+
+        exact_res = collection.query.fetch_objects(
+            filters=filter,
+            return_properties=["question", "answer", "coachingTip"],
+            limit=3
+        )
+
+        for obj in exact_res.objects:
+            db_q = obj.properties.get("question", "").strip()
+            db_q_norm = re.sub(r"[^\w\s]", "", db_q).lower().strip()
+            if db_q_norm == q_norm:
+                print("✅ Exact match confirmed.")
+                answer = obj.properties.get("answer", "").strip()
+                coaching = obj.properties.get("coachingTip", "").strip()
+                return f"{answer}\n\n**Coaching Tip:** {coaching}"
+
+        print("⚠️ No strict match. Proceeding to vector search.")
+
+    except Exception as e:
+        print("Exact-match error:", e)
+
+    # 2. Vector search fallback with summarization
+    try:
+        filter = (
+            Filter.by_property("user").equal("both") |
+            Filter.by_property("user").equal(requested_user)
+        )
+
+        vec_res = collection.query.near_text(
+            query=raw_q,
+            filters=filter,
+            return_metadata=["distance"],
+            return_properties=["question", "answer", "coachingTip"],
+            limit=3
+        )
+
+        objects = vec_res.objects
+        print(f"🔍 Retrieved {len(objects)} vector matches:")
+
+        unique_faqs = []
+        questions_seen = []
+        for obj in objects:
+            q_text = obj.properties.get("question", "").strip()
+            is_duplicate = any(fuzz.ratio(q_text, seen_q) > 90 for seen_q in questions_seen)
+            if not is_duplicate:
+                unique_faqs.append(obj)
+                questions_seen.append(q_text)
+
+        print(f"🪩 After deduplication: {len(unique_faqs)} match(es) kept.")
+
+        for i, obj in enumerate(unique_faqs):
+            q_match = obj.properties.get("question", "")
+            d = obj.metadata.get("distance", "?")
+            print(f"{i+1}. {q_match} (distance: {d})")
+
+        if unique_faqs and float(unique_faqs[0].metadata.get("distance", 1.0)) <= 0.6:
+            blocks = []
+            for i, obj in enumerate(unique_faqs):
+                answer = obj.properties.get("answer", "").strip()
+                coaching = obj.properties.get("coachingTip", "").strip()
+                blocks.append(f"Answer {i+1}:\n{answer}\n\nCoaching Tip {i+1}: {coaching}")
+
+            combined = "\n\n---\n\n".join(blocks)
+            prompt = (
+                f"{SYSTEM_PROMPT}\n\n"
+                f"Question: {raw_q}\n\n"
+                f"Here are multiple answers and coaching tips from similar questions. Summarize them into a single helpful response for the user:\n\n{combined}"
             )
-            if vector_match.objects:
-                print("✅ Vector match found")
-                obj = vector_match.objects[0].properties
-            else:
-                print("❌ No matches found at all")
-                return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
-    except Exception as e:
-        print("❌ Error querying Weaviate:", str(e))
-        return "⚠️ There was a problem processing your question."
 
-    question = obj.get("question", "")
-    answer = obj.get("answer", "")
-    tip = obj.get("tip", "")
+            print("🌀 Vector match found. Prompt sent to OpenAI:\n", repr(prompt))
+            start = time.time()
+            reply = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=500,
+                temperature=0.5
+            )
+            end = time.time()
+            print(f"⏱️ OpenAI response time: {end - start:.2f} seconds")
 
-    try:
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"Q: {question}\nA: {answer}\n\nCoaching Tip: {tip}"},
-        ]
-        chat_response = openai_client.chat.completions.create(
-            model="gpt-4",
-            messages=messages,
-            temperature=0.4,
-        )
-        return chat_response.choices[0].message.content.strip()
+            content = reply.choices[0].message.content.strip()
+            if content.startswith('"') and content.endswith('"'):
+                content = content[1:-1]
+            return content.replace("\\n", "\n").strip()
+        else:
+            print("❌ No high-quality vector match. Returning fallback message.")
+
     except Exception as e:
-        print("❌ OpenAI error:", str(e))
-        return f"⚠️ Unable to generate a response right now. Please try again later."
+        print("Vector-search error:", e)
+
+    # 3. No match fallback
+    return (
+        "I do not possess the information to answer that question. "
+        "Try asking me something about financial, retirement, estate, or healthcare planning."
+    )
