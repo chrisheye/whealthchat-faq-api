@@ -5,8 +5,7 @@ import weaviate
 import openai
 import os
 import re
-from weaviate import WeaviateClient
-from weaviate.auth import AuthApiKey
+from weaviate.auth import AuthApiKey  # ✅ Only need AuthApiKey now
 from rapidfuzz import fuzz
 import time
 
@@ -56,18 +55,14 @@ WEAVIATE_CLUSTER_URL = os.environ.get("WEAVIATE_CLUSTER_URL", "https://7p26cwfht
 WEAVIATE_API_KEY = os.environ.get("WEAVIATE_API_KEY", "l08xptCQlzFutKWkusOTzvwPN2s4Scpbi7UJ")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
-
-# --- CONNECT TO WEAVIATE & OPENAI ---
-client = weaviate.connect_to_wcs(
-    cluster_url=WEAVIATE_CLUSTER_URL,
-    auth_credentials=AuthApiKey(WEAVIATE_API_KEY),
-    headers={"X-OpenAI-Api-Key": OPENAI_API_KEY}
+# ✅ Revert to v3-style client setup
+client = weaviate.Client(
+    url=WEAVIATE_CLUSTER_URL,
+    auth_client_secret=AuthApiKey(WEAVIATE_API_KEY),
+    additional_headers={"X-OpenAI-Api-Key": OPENAI_API_KEY}
 )
 
-
-
-
-openai.api_key = os.getenv("OPENAI_API_KEY")
+openai.api_key = OPENAI_API_KEY
 
 # --- HEALTH CHECK ---
 @app.get("/version")
@@ -111,7 +106,6 @@ async def get_faq(request: Request):
                     }
                 ]
             })
-
             .with_limit(3)
             .do()
         )
