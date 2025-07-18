@@ -16,4 +16,9 @@ app.add_middleware(
 
 client = WeaviateClient(
     url=os.environ.get("WEAVIATE_CLUSTER_URL", "https://7p26cwfhtawdfxv4j906a.c0.us-west3.gcp.weaviate.cloud"),
-    auth_credentials=AuthApiKey(os.environ.ge_
+    auth_credentials=AuthApiKey(os.environ.get("WEAVIATE_API_KEY", "l08xptCQlzFutKWkusOTzvwPN2s4Scpbi7UJ")),
+)
+
+@app.get("/version")
+def version():
+    return {"status": "OK", "version": "minimal test ✅"}
