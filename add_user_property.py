@@ -1,10 +1,10 @@
-from weaviate import Client
+from weaviate import WeaviateClient
 from weaviate.auth import AuthApiKey
 from weaviate.classes.config import Property, DataType
 
-client = Client(
+client = WeaviateClient(
     url="https://7p26cwfhtawdfxv4j906a.c0.us-west3.gcp.weaviate.cloud",
-    auth_client_secret=AuthApiKey("l08xptCQlzFutKWkusOTzvwPN2s4Scpbi7UJ")
+    auth_credentials=AuthApiKey("l08xptCQlzFutKWkusOTzvwPN2s4Scpbi7UJ")
 )
 
 # Define the new 'user' property
@@ -14,6 +14,6 @@ new_property = Property(
 )
 
 # Add it to the existing FAQ class
-client.schema.property.create("FAQ", new_property)
+client.schema.properties.add("FAQ", new_property)
 
 print("✅ 'user' property added to FAQ class.")
