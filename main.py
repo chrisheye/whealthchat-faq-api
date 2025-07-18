@@ -4,7 +4,7 @@ import weaviate
 import openai
 import os
 import re
-from weaviate import Client
+from weaviate import WeaviateClient
 from weaviate.auth import AuthApiKey
 from rapidfuzz import fuzz
 import time
@@ -52,11 +52,12 @@ app.add_middleware(
 )
 
 # --- CONNECT TO WEAVIATE & OPENAI ---
-client = Client(
-    url=os.getenv("WEAVIATE_CLUSTER_URL"),
-    auth_client_secret=AuthApiKey(os.getenv("WEAVIATE_API_KEY")),
-    additional_headers={"X-OpenAI-Api-Key": os.getenv("OPENAI_API_KEY")},
+client = WeaviateClient(
+    url=WEAVIATE_CLUSTER_URL,
+    auth_credentials=AuthApiKey(WEAVIATE_API_KEY),
+    additional_headers={"X-OpenAI-Api-Key": OPENAI_API_KEY}
 )
+
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
