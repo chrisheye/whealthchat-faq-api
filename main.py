@@ -9,6 +9,7 @@ import openai
 import os
 import re
 from rapidfuzz import fuzz
+import time
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -36,6 +37,7 @@ SYSTEM_PROMPT = (
 def normalize(text):
     return re.sub(r"[^\w\s]", "", text.lower().strip())
 
+# --- APP SETUP ---
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -47,7 +49,9 @@ app.add_middleware(
 
 WEAVIATE_CLUSTER_URL = os.getenv("WEAVIATE_CLUSTER_URL")
 WEAVIATE_API_KEY = os.getenv("WEAVIATE_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAIAPIKEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+print("🧪 ENV OPENAIAPIKEY:", os.environ.get("OPENAIAPIKEY"))
+
 
 client = weaviate.connect_to_wcs(
     cluster_url=WEAVIATE_CLUSTER_URL,
@@ -56,10 +60,6 @@ client = weaviate.connect_to_wcs(
 )
 
 openai.api_key = OPENAI_API_KEY
-os.environ["OPENAIAPIKEY"] = OPENAI_API_KEY  # for Weaviate to use
-
-print("🔑 OPENAIAPIKEY at runtime:", os.environ.get("OPENAIAPIKEY"))
-
 collection = client.collections.get("FAQ")
 print("🔍 Available collections:", client.collections.list_all())
 
@@ -100,9 +100,7 @@ async def get_faq(request: Request):
     except Exception as e:
         print("Exact-match error:", e)
 
-    # ✅ Vector fallback
     try:
-        print("🔧 Getting OpenAI embedding for fallback search...")
         vec_res = collection.query.near_text(
             query=raw_q,
             return_metadata=["distance"],
@@ -110,7 +108,7 @@ async def get_faq(request: Request):
             limit=5
         )
         objects = vec_res.objects
-        print(f"🔍 Retrieved {len(objects)} vector matches")
+        print(f"🔍 Retrieved {len(objects)} vector matches:")
 
         unique_faqs = []
         questions_seen = []
@@ -118,27 +116,30 @@ async def get_faq(request: Request):
             if obj.properties.get("user", "").lower() not in [requested_user, "both"]:
                 continue
             q_text = obj.properties.get("question", "").strip()
-            if not any(fuzz.ratio(q_text, seen) > 90 for seen in questions_seen):
+            is_duplicate = any(fuzz.ratio(q_text, seen_q) > 90 for seen_q in questions_seen)
+            if not is_duplicate:
                 unique_faqs.append(obj)
                 questions_seen.append(q_text)
 
-        print(f"🧪 Filtered to {len(unique_faqs)} usable fuzzy matches")
-        for i, obj in enumerate(unique_faqs):
-            print(f"{i+1}. Q: {obj.properties.get('question', '')} | distance: {getattr(obj.metadata, 'distance', '?')}")
+        print(f"🫹 After filtering and deduplication: {len(unique_faqs)} match(es) kept.")
 
-        if unique_faqs and float(getattr(unique_faqs[0].metadata, "distance", 1.0)) <= 0.6:
+        for i, obj in enumerate(unique_faqs):
+            print(f"{i+1}. {obj.properties.get('question', '')} (distance: {obj.metadata.get('distance', '?')})")
+
+        if unique_faqs and float(unique_faqs[0].metadata.get("distance", 1.0)) <= 0.6:
             blocks = []
             for i, obj in enumerate(unique_faqs):
                 answer = obj.properties.get("answer", "").strip()
                 coaching = obj.properties.get("coachingTip", "").strip()
                 blocks.append(f"Answer {i+1}:\n{answer}\n\nCoaching Tip {i+1}: {coaching}")
 
+blocks.append(f"Answer {i+1}:\n{answer}\n\nCoaching Tip {i+1}: {coaching}")
+
             combined = "\n\n---\n\n".join(blocks)
             prompt = (
                 f"{SYSTEM_PROMPT}\n\n"
                 f"Question: {raw_q}\n\n"
-                f"Here are multiple answers and coaching tips from similar questions. "
-                f"Summarize them into a single helpful response for the user:\n\n{combined}"
+                f"Here are multiple answers and coaching tips from similar questions. Summarize them into a single helpful response for the user:\n\n{combined}"
             )
             print("Sending prompt to OpenAI.")
             reply = openai.ChatCompletion.create(
@@ -150,9 +151,8 @@ async def get_faq(request: Request):
             return {"response": reply.choices[0].message.content.strip()}
         else:
             print("❌ No high-quality vector match. Returning fallback message.")
-
     except Exception as e:
-        print("Vector fallback error:", e)
+        print("Vector-search error:", e)
 
     return {
         "response": (
