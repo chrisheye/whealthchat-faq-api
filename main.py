@@ -123,9 +123,11 @@ async def get_faq(request: Request):
         print(f"🫹 After filtering and deduplication: {len(unique_faqs)} match(es) kept.")
 
         for i, obj in enumerate(unique_faqs):
-            print(f"{i+1}. {obj.properties.get('question', '')} (distance: {obj.metadata.get('distance', '?')})")
+            distance = getattr(obj.metadata, "distance", '?')
+            print(f"{i+1}. {obj.properties.get('question', '')} (distance: {distance})")
 
-        if unique_faqs and float(unique_faqs[0].metadata.get("distance", 1.0)) <= 0.6:
+
+        if unique_faqs and getattr(unique_faqs[0].metadata, "distance", 1.0) <= 0.6:
             blocks = []
             for i, obj in enumerate(unique_faqs):
                 answer = obj.properties.get("answer", "").strip()
