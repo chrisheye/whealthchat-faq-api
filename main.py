@@ -38,11 +38,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-client = Client(
-    url=os.getenv("WEAVIATE_CLUSTER_URL"),
-    auth_client_secret=AuthApiKey(os.getenv("WEAVIATE_API_KEY")),
-    additional_headers={"X-OpenAI-Api-Key": os.getenv("OPENAI_API_KEY")},
+from weaviate import WeaviateClient, AuthApiKey
+
+client = WeaviateClient.connect_to_wcs(
+    cluster_url=os.getenv("WEAVIATE_CLUSTER_URL"),
+    auth_credentials=AuthApiKey(os.getenv("WEAVIATE_API_KEY")),
+    headers={"X-OpenAI-Api-Key": os.getenv("OPENAI_API_KEY")}
 )
+
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
