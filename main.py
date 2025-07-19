@@ -129,7 +129,7 @@ async def get_faq(request: Request):
             for i, obj in enumerate(unique_faqs):
                 answer = obj.properties.get("answer", "").strip()
                 coaching = obj.properties.get("coachingTip", "").strip()
-                blocks.append(f"Answer {i+1}:
+                blocks.append(f"Answer {i+1}:\n{answer}\n\nCoaching Tip {i+1}: {coaching}")
 {answer}
 
 Coaching Tip {i+1}: {coaching}")
