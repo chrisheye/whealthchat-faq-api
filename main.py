@@ -11,6 +11,12 @@ import re
 from rapidfuzz import fuzz
 import time
 
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+
 SYSTEM_PROMPT = (
     "You are a helpful assistant. Respond using Markdown with consistent formatting.\n"
     "Do NOT include the word 'Answer:' in your response.\n"
@@ -195,6 +201,10 @@ def get_classes():
     return [c.name for c in client.collections.list_all()]
 
 @app.get("/faq-count")
-async def faq_count():
-    count = client.collections.get("whealthchat-faqs").count()
-    return {"count": count}
+def count_faqs():
+    try:
+        count = client.collections.get("whealthchat-faqs").count()
+        return {"count": count}
+    except Exception as e:
+        logger.exception("❌ Error counting FAQs")
+        raise HTTPException(status_code=500, detail=str(e))
