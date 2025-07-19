@@ -56,7 +56,8 @@ client = weaviate.connect_to_wcs(
 )
 
 openai.api_key = OPENAI_API_KEY
-os.environ["OPENAIAPIKEY"] = os.getenv("OPENAI_API_KEY")  # for Weaviate to use
+os.environ["OPENAIAPIKEY"] = OPENAI_API_KEY  # for Weaviate to use
+
 print("🔑 OPENAIAPIKEY at runtime:", os.environ.get("OPENAIAPIKEY"))
 
 collection = client.collections.get("FAQ")
