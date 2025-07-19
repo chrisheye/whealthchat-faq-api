@@ -193,3 +193,8 @@ async def get_faq(request: Request):
 @app.get("/classes")
 def get_classes():
     return [c.name for c in client.collections.list_all()]
+
+@app.get("/faq-count")
+async def faq_count():
+    count = client.collections.get("whealthchat-faqs").count()
+    return {"count": count}
