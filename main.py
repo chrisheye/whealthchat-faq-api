@@ -186,6 +186,7 @@ async def get_faq(request: Request):
         "I do not possess the information to answer that question. "
         "Try asking me something about financial, retirement, estate, or healthcare planning."
     )
-    @app.get("/classes")
-    def get_classes():
-        return [c.name for c in client.collections.list_all()]
+# 👇 Put this OUTSIDE all other functions
+@app.get("/classes")
+def get_classes():
+    return [c.name for c in client.collections.list_all()]
