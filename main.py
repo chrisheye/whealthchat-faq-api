@@ -132,16 +132,13 @@ def format_response(obj):
 
 
 # 👇 Put this OUTSIDE all other functions
-@app.get("/classes")
-def get_classes():
-    return [c.name for c in client.collections.list_all()]
-
 @app.get("/faq-count")
 def count_faqs():
     try:
-        count = client.collections.get("FAQ").aggregate.over_all(total_count=True).metadata.total_count
+        collection = client.collections.get("FAQ")
+        results = collection.query.fetch_objects(limit=1000)
+        count = len(results.objects)
         return {"count": count}
     except Exception as e:
         logger.exception("❌ Error counting FAQs")
-        raise HTTPException(status_code=500, detail=str(e))
-
+        raise HTTPException(status_code=500, detail="Could not count FAQs")
