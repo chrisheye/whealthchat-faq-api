@@ -1,152 +1,99 @@
-import weaviate; print("✅ weaviate version:", weaviate.__version__)
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from weaviate.classes.query import Filter
-from weaviate.classes.init import AdditionalConfig
-from weaviate.auth import AuthApiKey
-import weaviate
-import openai
 import os
-import re
-from rapidfuzz import fuzz
-import time
+import weaviate
+from weaviate.classes.query import Filter
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+import openai
 
-import logging
-
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
-
-
-SYSTEM_PROMPT = (
-    "You are a helpful assistant. Respond using Markdown with consistent formatting.\n"
-    "Do NOT include the word 'Answer:' in your response.\n"
-    "Bold the words 'Coaching Tip:' exactly as shown.\n"
-    "Do not bold any other parts of the answer text.\n"
-    "Keep 'Coaching Tip:' inline with the rest of the text, followed by a colon.\n"
-    "Use line breaks to break long answers into clear, readable paragraphs – ideally no more than 3 sentences.\n"
-    "Preserve all emojis in both the answer and the Coaching Tip exactly as they appear in the source material.\n"
-    "Use a warm, supportive tone that acknowledges the emotional weight of sensitive topics like aging, illness, or financial stress.\n"
-    "Avoid clinical or robotic phrasing. Use gentle, encouraging language that helps the user feel heard and empowered.\n"
-    "Show empathy through wording — not by pretending to be human, but by offering reassurance and thoughtful framing of difficult issues.\n"
-    "**If the original answers include links or downloads (e.g., checklists or tools), make sure to include those links in the final summarized answer. Do not omit them.**"
-    "**Do not include links, downloads, or tools in the Coaching Tip — those must go in the main answer only.**\n"
-    "**Preserve bold formatting from the source answers wherever it appears in the summary.**\n"
-    "When appropriate, encourage users not to isolate themselves when facing difficult decisions. You may include the phrase **never worry alone** (in bold). Use sentence case unless it begins a sentence. Do not use the phrase in every response—only when it is contextually appropriate and feels natural.\n"
-    "If multiple Coaching Tips are provided, summarize them into ONE final Coaching Tip for the user."
-    "If a long-term care calculator is mentioned, refer only to the custom calculator provided by WhealthChat — not generic online tools."
-)
-
-def normalize(text):
-    return (
-        text.lower()
-            .strip()
-            .replace("’", "'")
-            .replace("‘", "'")
-            .replace("“", '"')
-            .replace("”", '"')
-            .replace("—", "-")
-            .replace("–", "-")
-            .replace("…", "...")
-    )
-
-# --- APP SETUP ---
+# Set up FastAPI app
 app = FastAPI()
+
+# CORS setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://whealthchat.ai", "https://staging.whealthchat.ai"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-WEAVIATE_CLUSTER_URL = os.getenv("WEAVIATE_CLUSTER_URL")
-WEAVIATE_API_KEY = os.getenv("WEAVIATE_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# Load environment variables
+WEAVIATE_URL = os.environ.get("WEAVIATE_URL")
+WEAVIATE_API_KEY = os.environ.get("WEAVIATE_API_KEY")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+COLLECTION_NAME = "FAQ"
 
+# Connect to Weaviate
 client = weaviate.connect_to_wcs(
-    cluster_url=WEAVIATE_CLUSTER_URL,
-    auth_credentials=AuthApiKey(WEAVIATE_API_KEY),
-    additional_config=AdditionalConfig(grpc_port_experimental=50051)
+    cluster_url=WEAVIATE_URL,
+    auth_credentials=weaviate.auth.AuthApiKey(WEAVIATE_API_KEY),
+    headers={"X-OpenAI-Api-Key": OPENAI_API_KEY},
 )
 
-openai.api_key = OPENAI_API_KEY
-collection = client.collections.get("FAQ")
-print("🔍 Available collections:", client.collections.list_all())
+collection = client.collections.get(COLLECTION_NAME)
 
-# --- HEALTH CHECK ---
-@app.get("/version")
-def version_check():
-    return {"status": "Running", "message": "✅ CORS enabled version"}
 
-# --- FAQ ENDPOINT ---
-from weaviate.classes.query import Filter, _And
+@app.post("/chat")
+async def chat(request: Request):
+    data = await request.json()
+    q = data.get("question", "").strip()
+    user = data.get("user", "").strip().lower()
 
-@app.post("/faq")
-async def get_faq_answer(request: Request):
+    if not q:
+        return {"answer": "Please enter a question."}
+
     try:
-        data = await request.json()
-        q = data.get("query", "").strip()
-        user = data.get("user", "consumer").strip().lower()
-
-        collection = client.collections.get("FAQ")
-
-        # 1. Try exact match
-        exact_results = collection.query.fetch_objects(
-            filters=_And([
-                Filter.by_property("questionExact").equal(q),
-                Filter.by_property("user").equal(user)
-            ]),
-            limit=1
-        )
-        if exact_results.objects:
-            obj = exact_results.objects[0]
-            return {
-                "response": format_response(obj)
-            }
-
-        # 2. Vector fallback
-        vector_results = collection.query.near_text(
-            query=q,
-            filters=Filter.by_property("user").equal(user),
-            limit=1
-        )
-        if vector_results.objects:
-            obj = vector_results.objects[0]
-            return {
-                "response": format_response(obj)
-            }
-
-        print("❌ No results from exact or vector match for:", q, "| User:", user)
-        return {
-            "response": (
-                "I do not possess the information to answer that question. "
-                "Try asking me something about financial, retirement, estate, or healthcare planning."
+        # Step 1: Exact match
+        if user:
+            exact_results = collection.query.fetch_objects(
+                filters=Filter.by_all([
+                    Filter.by_property("questionExact").equal(q),
+                    Filter.by_property("user").equal(user)
+                ]),
+                limit=1
             )
-        }
+        else:
+            exact_results = collection.query.fetch_objects(
+                filters=Filter.by_property("questionExact").equal(q),
+                limit=1
+            )
+
+        if exact_results.objects:
+            obj = exact_results.objects[0].properties
+            return {
+                "answer": obj["answer"],
+                "coachingTip": obj.get("coachingTip", ""),
+                "source": obj.get("source", "")
+            }
+
+        # Step 2: Vector search fallback
+        near_text = collection.query.near_text(q, limit=1, filters=Filter.by_property("user").equal(user)) if user else collection.query.near_text(q, limit=1)
+        if not near_text.objects:
+            return {"answer": "Sorry, I couldn't find a relevant answer."}
+
+        obj = near_text.objects[0].properties
+        question = obj["question"]
+        answer = obj["answer"]
+        tip = obj.get("coachingTip", "")
+        source = obj.get("source", "")
+
+        # Step 3: Format with OpenAI
+        openai.api_key = OPENAI_API_KEY
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant who answers questions with clear facts followed by supportive, behavioral coaching tips. Format as Markdown with bold headers. Never invent information."},
+            {"role": "user", "content": f"Q: {q}\n\nBest match:\nQ: {question}\nA: {answer}\nTip: {tip}"}
+        ]
+
+        completion = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=messages,
+            temperature=0.4,
+            max_tokens=800
+        )
+
+        response_text = completion.choices[0].message.content
+        return {"answer": response_text, "source": source}
 
     except Exception as e:
-        logger.exception("❌ Error in /faq handler")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-
-def format_response(obj):
-    """Combine answer and coaching tip into single markdown string."""
-    answer = obj.properties.get("answer", "").strip()
-    tip = obj.properties.get("coachingTip", "").strip()
-    if tip:
-        return f"{answer}\n\n**Coaching Tip:** {tip}"
-    return answer
-
-
-# 👇 Put this OUTSIDE all other functions
-@app.get("/faq-count")
-def count_faqs():
-    try:
-        collection = client.collections.get("FAQ")
-        results = collection.query.fetch_objects(limit=1000)
-        count = len(results.objects)
-        return {"count": count}
-    except Exception as e:
-        logger.exception("❌ Error counting FAQs")
-        raise HTTPException(status_code=500, detail="Could not count FAQs")
+        print(f"❌ Error: {e}")
+        return {"answer": "Sorry, something went wrong."}
