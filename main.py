@@ -182,10 +182,13 @@ async def get_faq(request: Request):
         print("Vector-search error:", e)
 
     # 3. No match fallback
-    return (
-        "I do not possess the information to answer that question. "
-        "Try asking me something about financial, retirement, estate, or healthcare planning."
-    )
+    return {
+        "response": (
+            "I do not possess the information to answer that question. "
+            "Try asking me something about financial, retirement, estate, or healthcare planning."
+        )
+    }
+
 # 👇 Put this OUTSIDE all other functions
 @app.get("/classes")
 def get_classes():
