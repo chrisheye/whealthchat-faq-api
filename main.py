@@ -56,7 +56,10 @@ print("🧪 ENV OPENAIAPIKEY:", os.environ.get("OPENAIAPIKEY"))
 client = weaviate.connect_to_wcs(
     cluster_url=WEAVIATE_CLUSTER_URL,
     auth_credentials=AuthApiKey(WEAVIATE_API_KEY),
-    additional_config=AdditionalConfig(grpc_port_experimental=50051)
+    additional_config=AdditionalConfig(
+        grpc_port_experimental=50051,
+        headers={"X-OpenAI-Api-Key": OPENAI_API_KEY}
+    )
 )
 
 openai.api_key = OPENAI_API_KEY
