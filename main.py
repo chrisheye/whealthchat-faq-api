@@ -79,53 +79,55 @@ def version_check():
     return {"status": "Running", "message": "✅ CORS enabled version"}
 
 # --- FAQ ENDPOINT ---
-# --- FAQ ENDPOINT ---
 @app.post("/faq")
 async def get_faq_answer(request: Request):
-    data = await request.json()
-    q = data.get("query", "").strip()
-    user = data.get("user", "consumer").strip().lower()
+    try:
+        data = await request.json()
+        q = data.get("query", "").strip()
+        user = data.get("user", "consumer").strip().lower()
 
-    collection = client.collections.get("FAQ")
+        collection = client.collections.get("FAQ")
 
-    # 1. Try exact match
-    exact_results = collection.query.fetch_objects(
-        filters=Filter.by_combination(
-        operator="And",
-        filters=[
-        Filter.by_property("questionExact").equal(q),
-        Filter.by_property("user").equal(user)
-    ]
-),
-
-        limit=1
-    )
-    if exact_results.objects:
-        obj = exact_results.objects[0]
-        return {
-            "response": format_response(obj)
-        }
-
-    # 2. Vector fallback
-    vector_results = collection.query.near_text(
-        query=q,
-        filters=Filter.by_property("user").equal(user),
-        limit=1
-    )
-    if vector_results.objects:
-        obj = vector_results.objects[0]
-        return {
-            "response": format_response(obj)
-        }
-
-    # ✅ 3. No match fallback — debug print goes here
-    print("❌ No results from exact or vector match for:", q, "| User:", user)
-    return {
-        "response": (
-            "I do not possess the information to answer that question. "
-            "Try asking me something about financial, retirement, estate, or healthcare planning."
+        # 1. Try exact match
+        exact_results = collection.query.fetch_objects(
+            filters=Filter.by_combination(
+                operator="And",
+                filters=[
+                    Filter.by_property("questionExact").equal(q),
+                    Filter.by_property("user").equal(user)
+                ]
+            ),
+            limit=1
         )
-    }
+        if exact_results.objects:
+            obj = exact_results.objects[0]
+            return {
+                "response": format_response(obj)
+            }
+
+        # 2. Vector fallback
+        vector_results = collection.query.near_text(
+            query=q,
+            filters=Filter.by_property("user").equal(user),
+            limit=1
+        )
+        if vector_results.objects:
+            obj = vector_results.objects[0]
+            return {
+                "response": format_response(obj)
+            }
+
+        print("❌ No results from exact or vector match for:", q, "| User:", user)
+        return {
+            "response": (
+                "I do not possess the information to answer that question. "
+                "Try asking me something about financial, retirement, estate, or healthcare planning."
+            )
+        }
+
+    except Exception as e:
+        logger.exception("❌ Error in /faq handler")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 
