@@ -64,7 +64,7 @@ client = weaviate.connect_to_wcs(
 )
 
 openai.api_key = OPENAI_API_KEY
-collection = client.collections.get("whealthchat-faqs")
+collection = client.collections.get("WhealthchatFaqs")
 
 # --- HEALTH CHECK ---
 @app.get("/version")
