@@ -29,14 +29,13 @@ SYSTEM_PROMPT = (
     "**Do not include links, downloads, or tools in the Coaching Tip — those must go in the main answer only.**\n"
     "**Preserve bold formatting from the source answers wherever it appears in the summary.**\n"
     "When appropriate, encourage users not to isolate themselves when facing difficult decisions. You may include the phrase **never worry alone** (in bold). Use sentence case unless it begins a sentence. Do not use the phrase in every response—only when it is contextually appropriate and feels natural.\n"
-    "If multiple Coaching Tips are provided, summarize them into ONE final Coaching Tip for the user.\n"
+    "If multiple Coaching Tips are provided, summarize them into ONE final Coaching Tip for the user."
     "If a long-term care calculator is mentioned, refer only to the custom calculator provided by WhealthChat — not generic online tools."
 )
 
 def normalize(text):
     return re.sub(r"[^\w\s]", "", text.lower().strip())
 
-# --- APP SETUP ---
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -62,7 +61,7 @@ print("🔍 Available collections:", client.collections.list_all())
 
 @app.get("/version")
 def version_check():
-    return {"status": "Running", "message": "✅ Exact + vector match version"}
+    return {"status": "Running", "message": "✅ CORS enabled version"}
 
 @app.post("/faq")
 async def get_faq(request: Request):
@@ -97,17 +96,11 @@ async def get_faq(request: Request):
     except Exception as e:
         print("Exact-match error:", e)
 
-    # Fuzzy fallback using OpenAI embeddings
+    # ✅ Vector fallback
     try:
         print("🔧 Getting OpenAI embedding for fallback search...")
-        embedding_response = openai.Embedding.create(
-            input=raw_q,
-            model="text-embedding-ada-002"
-        )
-        query_vector = embedding_response["data"][0]["embedding"]
-
-        vec_res = collection.query.near_vector(
-            near_vector=query_vector,
+        vec_res = collection.query.near_text(
+            query=raw_q,
             return_metadata=["distance"],
             return_properties=["question", "answer", "coachingTip", "user"],
             limit=5
@@ -116,18 +109,20 @@ async def get_faq(request: Request):
         print(f"🔍 Retrieved {len(objects)} vector matches")
 
         unique_faqs = []
-        seen = []
+        questions_seen = []
         for obj in objects:
             if obj.properties.get("user", "").lower() not in [requested_user, "both"]:
                 continue
             q_text = obj.properties.get("question", "").strip()
-            if not any(fuzz.ratio(q_text, prev) > 90 for prev in seen):
+            if not any(fuzz.ratio(q_text, seen) > 90 for seen in questions_seen):
                 unique_faqs.append(obj)
-                seen.append(q_text)
+                questions_seen.append(q_text)
 
         print(f"🧪 Filtered to {len(unique_faqs)} usable fuzzy matches")
+        for i, obj in enumerate(unique_faqs):
+            print(f"{i+1}. Q: {obj.properties.get('question', '')} | distance: {getattr(obj.metadata, 'distance', '?')}")
 
-        if unique_faqs and float(unique_faqs[0].metadata.get("distance", 1.0)) <= 0.6:
+        if unique_faqs and float(getattr(unique_faqs[0].metadata, "distance", 1.0)) <= 0.6:
             blocks = []
             for i, obj in enumerate(unique_faqs):
                 answer = obj.properties.get("answer", "").strip()
@@ -141,7 +136,7 @@ async def get_faq(request: Request):
                 f"Here are multiple answers and coaching tips from similar questions. "
                 f"Summarize them into a single helpful response for the user:\n\n{combined}"
             )
-            print("🧠 Sending summarization prompt to OpenAI...")
+            print("Sending prompt to OpenAI.")
             reply = openai.ChatCompletion.create(
                 model="gpt-4",
                 messages=[{"role": "user", "content": prompt}],
@@ -150,7 +145,8 @@ async def get_faq(request: Request):
             )
             return {"response": reply.choices[0].message.content.strip()}
         else:
-            print("❌ No good fuzzy match found.")
+            print("❌ No high-quality vector match. Returning fallback message.")
+
     except Exception as e:
         print("Vector fallback error:", e)
 
