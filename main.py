@@ -133,8 +133,6 @@ async def get_faq(request: Request):
                 coaching = obj.properties.get("coachingTip", "").strip()
                 blocks.append(f"Answer {i+1}:\n{answer}\n\nCoaching Tip {i+1}: {coaching}")
 
-blocks.append(f"Answer {i+1}:\n{answer}\n\nCoaching Tip {i+1}: {coaching}")
-
             combined = "\n\n---\n\n".join(blocks)
             prompt = (
                 f"{SYSTEM_PROMPT}\n\n"
