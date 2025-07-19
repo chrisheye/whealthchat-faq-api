@@ -90,13 +90,11 @@ async def get_faq_answer(request: Request):
 
         # 1. Try exact match
         exact_results = collection.query.fetch_objects(
-            filters=Filter.by_combination(
-                operator="And",
-                filters=[
-                    Filter.by_property("questionExact").equal(q),
-                    Filter.by_property("user").equal(user)
-                ]
-            ),
+        filters=Filter.by_and([
+            Filter.by_property("questionExact").equal(q),
+            Filter.by_property("user").equal(user)
+        ]),
+
             limit=1
         )
         if exact_results.objects:
