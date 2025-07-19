@@ -79,6 +79,8 @@ def version_check():
     return {"status": "Running", "message": "✅ CORS enabled version"}
 
 # --- FAQ ENDPOINT ---
+from weaviate.classes.query import Filter, _And
+
 @app.post("/faq")
 async def get_faq_answer(request: Request):
     try:
@@ -90,7 +92,7 @@ async def get_faq_answer(request: Request):
 
         # 1. Try exact match
         exact_results = collection.query.fetch_objects(
-            filters=Filter.by_all([
+            filters=_And([
                 Filter.by_property("questionExact").equal(q),
                 Filter.by_property("user").equal(user)
             ]),
