@@ -80,113 +80,38 @@ def version_check():
 
 # --- FAQ ENDPOINT ---
 @app.post("/faq")
-async def get_faq(request: Request):
-    body = await request.json()
-    raw_q = body.get("query", "").strip()
-    requested_user = body.get("user", "").strip().lower()
-    q_norm = re.sub(r"[^\w\s]", "", raw_q).lower()
+async def get_faq_answer(request: Request):
+    data = await request.json()
+    q = data.get("query", "").strip()
+    user = data.get("user", "consumer").strip().lower()
 
-    if not raw_q:
-        raise HTTPException(status_code=400, detail="Missing 'query' in request body.")
+    collection = client.collections.get("FAQ")
 
-    print(f"👤 User type: {requested_user}")
-    print(f"Received question: {raw_q}")
-    print(f"🔎 Checking exact match for normalized question: {q_norm}")
+    # 1. Try exact match on questionExact
+    exact_results = collection.query.fetch_objects(
+        filters=Filter.by_property("questionExact").equal(q)
+        .and_filter(Filter.by_property("user").equal(user)),
+        limit=1
+    )
 
-    # 1. Exact match
-    try:
-        filter = Filter.by_property("question").equal(raw_q.strip()) & (
-            Filter.by_property("user").equal("both") | Filter.by_property("user").equal(requested_user)
-        )
+    if exact_results.objects:
+        obj = exact_results.objects[0]
+        return {
+            "response": format_response(obj)
+        }
 
-        exact_res = collection.query.fetch_objects(
-            filters=filter,
-            return_properties=["question", "answer", "coachingTip"],
-            limit=3
-        )
+    # 2. Fallback to vector search if no exact match
+    vector_results = collection.query.near_text(
+        query=q,
+        filters=Filter.by_property("user").equal(user),
+        limit=1
+    )
 
-        for obj in exact_res.objects:
-            db_q = obj.properties.get("question", "").strip()
-            db_q_norm = re.sub(r"[^\w\s]", "", db_q).lower().strip()
-            if db_q_norm == q_norm:
-                print("✅ Exact match confirmed.")
-                answer = obj.properties.get("answer", "").strip()
-                coaching = obj.properties.get("coachingTip", "").strip()
-                return f"{answer}\n\n**Coaching Tip:** {coaching}"
-
-        print("⚠️ No strict match. Proceeding to vector search.")
-
-    except Exception as e:
-        print("Exact-match error:", e)
-
-    # 2. Vector search fallback with summarization
-    try:
-        filter = (
-            Filter.by_property("user").equal("both") |
-            Filter.by_property("user").equal(requested_user)
-        )
-
-        vec_res = collection.query.near_text(
-            query=raw_q,
-            filters=filter,
-            return_metadata=["distance"],
-            return_properties=["question", "answer", "coachingTip"],
-            limit=3
-        )
-
-        objects = vec_res.objects
-        print(f"🔍 Retrieved {len(objects)} vector matches:")
-
-        unique_faqs = []
-        questions_seen = []
-        for obj in objects:
-            q_text = obj.properties.get("question", "").strip()
-            is_duplicate = any(fuzz.ratio(q_text, seen_q) > 90 for seen_q in questions_seen)
-            if not is_duplicate:
-                unique_faqs.append(obj)
-                questions_seen.append(q_text)
-
-        print(f"🪩 After deduplication: {len(unique_faqs)} match(es) kept.")
-
-        for i, obj in enumerate(unique_faqs):
-            q_match = obj.properties.get("question", "")
-            d = obj.metadata.get("distance", "?")
-            print(f"{i+1}. {q_match} (distance: {d})")
-
-        if unique_faqs and float(unique_faqs[0].metadata.get("distance", 1.0)) <= 0.6:
-            blocks = []
-            for i, obj in enumerate(unique_faqs):
-                answer = obj.properties.get("answer", "").strip()
-                coaching = obj.properties.get("coachingTip", "").strip()
-                blocks.append(f"Answer {i+1}:\n{answer}\n\nCoaching Tip {i+1}: {coaching}")
-
-            combined = "\n\n---\n\n".join(blocks)
-            prompt = (
-                f"{SYSTEM_PROMPT}\n\n"
-                f"Question: {raw_q}\n\n"
-                f"Here are multiple answers and coaching tips from similar questions. Summarize them into a single helpful response for the user:\n\n{combined}"
-            )
-
-            print("🌀 Vector match found. Prompt sent to OpenAI:\n", repr(prompt))
-            start = time.time()
-            reply = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=500,
-                temperature=0.5
-            )
-            end = time.time()
-            print(f"⏱️ OpenAI response time: {end - start:.2f} seconds")
-
-            content = reply.choices[0].message.content.strip()
-            if content.startswith('"') and content.endswith('"'):
-                content = content[1:-1]
-            return content.replace("\\n", "\n").strip()
-        else:
-            print("❌ No high-quality vector match. Returning fallback message.")
-
-    except Exception as e:
-        print("Vector-search error:", e)
+    if vector_results.objects:
+        obj = vector_results.objects[0]
+        return {
+            "response": format_response(obj)
+        }
 
     # 3. No match fallback
     return {
@@ -196,6 +121,16 @@ async def get_faq(request: Request):
         )
     }
 
+
+def format_response(obj):
+    """Combine answer and coaching tip into single markdown string."""
+    answer = obj.properties.get("answer", "").strip()
+    tip = obj.properties.get("coachingTip", "").strip()
+    if tip:
+        return f"{answer}\n\n**Coaching Tip:** {tip}"
+    return answer
+
+
 # 👇 Put this OUTSIDE all other functions
 @app.get("/classes")
 def get_classes():
@@ -204,7 +139,7 @@ def get_classes():
 @app.get("/faq-count")
 def count_faqs():
     try:
-        count = client.collections.get("whealthchat-faqs").aggregate.over_all(total_count=True).metadata.total_count
+        count = client.collections.get("FAQ").aggregate.over_all(total_count=True).metadata.total_count
         return {"count": count}
     except Exception as e:
         logger.exception("❌ Error counting FAQs")
