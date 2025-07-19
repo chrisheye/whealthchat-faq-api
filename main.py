@@ -108,19 +108,18 @@ async def get_faq(request: Request):
         objects = vec_res.objects
         print(f"🔍 Retrieved {len(objects)} vector matches:")
 
+        # Filter by user type and remove duplicates
         unique_faqs = []
         questions_seen = []
         for obj in objects:
             if obj.properties.get("user", "").lower() not in [requested_user, "both"]:
                 continue
             q_text = obj.properties.get("question", "").strip()
-            is_duplicate = any(fuzz.ratio(q_text, seen_q) > 90 for seen_q in questions_seen)
-            if not is_duplicate:
+            if not any(fuzz.ratio(q_text, seen) > 90 for seen in questions_seen):
                 unique_faqs.append(obj)
                 questions_seen.append(q_text)
 
         print(f"🫹 After filtering and deduplication: {len(unique_faqs)} match(es) kept.")
-
         for i, obj in enumerate(unique_faqs):
             print(f"{i+1}. {obj.properties.get('question', '')} (distance: {obj.metadata.get('distance', '?')})")
 
@@ -130,15 +129,13 @@ async def get_faq(request: Request):
                 answer = obj.properties.get("answer", "").strip()
                 coaching = obj.properties.get("coachingTip", "").strip()
                 blocks.append(f"Answer {i+1}:\n{answer}\n\nCoaching Tip {i+1}: {coaching}")
-{answer}
-
-Coaching Tip {i+1}: {coaching}")
 
             combined = "\n\n---\n\n".join(blocks)
             prompt = (
                 f"{SYSTEM_PROMPT}\n\n"
                 f"Question: {raw_q}\n\n"
-                f"Here are multiple answers and coaching tips from similar questions. Summarize them into a single helpful response for the user:\n\n{combined}"
+                f"Here are multiple answers and coaching tips from similar questions. "
+                f"Summarize them into a single helpful response for the user:\n\n{combined}"
             )
             print("Sending prompt to OpenAI.")
             reply = openai.ChatCompletion.create(
@@ -150,6 +147,7 @@ Coaching Tip {i+1}: {coaching}")
             return {"response": reply.choices[0].message.content.strip()}
         else:
             print("❌ No high-quality vector match. Returning fallback message.")
+
     except Exception as e:
         print("Vector-search error:", e)
 
