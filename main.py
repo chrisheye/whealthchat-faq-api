@@ -47,7 +47,7 @@ app.add_middleware(
 
 WEAVIATE_CLUSTER_URL = os.getenv("WEAVIATE_CLUSTER_URL")
 WEAVIATE_API_KEY = os.getenv("WEAVIATE_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAIAPIKEY")
 
 client = weaviate.connect_to_wcs(
     cluster_url=WEAVIATE_CLUSTER_URL,
