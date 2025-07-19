@@ -203,8 +203,9 @@ def get_classes():
 @app.get("/faq-count")
 def count_faqs():
     try:
-        count = client.collections.get("whealthchat-faqs").count()
+        count = client.collections.get("whealthchat-faqs").aggregate.over_all(total_count=True).metadata.total_count
         return {"count": count}
     except Exception as e:
         logger.exception("❌ Error counting FAQs")
         raise HTTPException(status_code=500, detail=str(e))
+
