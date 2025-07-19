@@ -1,6 +1,8 @@
+import weaviate; print("✅ weaviate version:", weaviate.__version__)
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from weaviate import Client
+from weaviate.classes.query import Filter
+from weaviate.classes.init import AdditionalConfig
 from weaviate.auth import AuthApiKey
 import weaviate
 import openai
@@ -8,6 +10,10 @@ import os
 import re
 from rapidfuzz import fuzz
 import time
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "You are a helpful assistant. Respond using Markdown with consistent formatting.\n"
@@ -24,12 +30,15 @@ SYSTEM_PROMPT = (
     "**Do not include links, downloads, or tools in the Coaching Tip — those must go in the main answer only.**\n"
     "**Preserve bold formatting from the source answers wherever it appears in the summary.**\n"
     "When appropriate, encourage users not to isolate themselves when facing difficult decisions. You may include the phrase **never worry alone** (in bold). Use sentence case unless it begins a sentence. Do not use the phrase in every response—only when it is contextually appropriate and feels natural.\n"
-    "If multiple Coaching Tips are provided, summarize them into ONE final Coaching Tip for the user.\n"
+    "If multiple Coaching Tips are provided, summarize them into ONE final Coaching Tip for the user."
     "If a long-term care calculator is mentioned, refer only to the custom calculator provided by WhealthChat — not generic online tools."
 )
 
-app = FastAPI()
+def normalize(text):
+    return re.sub(r"[^\w\s]", "", text.lower().strip())
 
+# --- APP SETUP ---
+app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://whealthchat.ai", "https://staging.whealthchat.ai"],
@@ -38,132 +47,127 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from weaviate import connect_to_wcs
-from weaviate.auth import AuthApiKey
+WEAVIATE_CLUSTER_URL = os.getenv("WEAVIATE_CLUSTER_URL")
+WEAVIATE_API_KEY = os.getenv("WEAVIATE_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-client = connect_to_wcs(
-    cluster_url=os.getenv("WEAVIATE_CLUSTER_URL"),
-    auth_credentials=AuthApiKey(os.getenv("WEAVIATE_API_KEY")),
-    headers={"X-OpenAI-Api-Key": os.getenv("OPENAI_API_KEY")}
+client = weaviate.connect_to_wcs(
+    cluster_url=WEAVIATE_CLUSTER_URL,
+    auth_credentials=AuthApiKey(WEAVIATE_API_KEY),
+    additional_config=AdditionalConfig(grpc_port_experimental=50051)
 )
 
-
-openai.api_key = os.getenv("OPENAI_API_KEY")
+openai.api_key = OPENAI_API_KEY
+collection = client.collections.get("FAQ")
+print("🔍 Available collections:", client.collections.list_all())
 
 @app.get("/version")
 def version_check():
-    return {"status": "Running", "message": "✅ Fuzzy logic + user filter version"}
-
-def normalize(text):
-    return (
-        text.lower()
-        .strip()
-        .replace("’", "'")
-        .replace("‘", "'")
-        .replace("“", '"')
-        .replace("”", '"')
-        .replace("—", "-")
-        .replace("–", "-")
-        .replace("…", "...")
-    )
+    return {"status": "Running", "message": "✅ CORS enabled version"}
 
 @app.post("/faq")
 async def get_faq(request: Request):
     body = await request.json()
     raw_q = body.get("query", "").strip()
-    user = body.get("user", "").strip().lower()
+    requested_user = body.get("user", "").strip().lower()
+    q_norm = normalize(raw_q)
 
-    if not raw_q or not user:
-        raise HTTPException(status_code=400, detail="Missing 'query' or 'user'.")
+    if not raw_q:
+        raise HTTPException(status_code=400, detail="Missing 'query' in request body.")
 
-    print(f"👤 User type: {user}")
+    print(f"👤 User type: {requested_user}")
     print(f"Received question: {raw_q}")
-    normalized = normalize(raw_q)
-    print(f"🔎 Checking exact match for normalized question: {normalized}")
+    print(f"🔎 Checking exact match for normalized question: {q_norm}")
 
-    # --- 1. Exact Match ---
     try:
-        exact = (
-            client.query
-            .get("FAQ", ["question", "answer", "coachingTip"])
-            .with_where({
-                "operator": "And",
-                "operands": [
-                    {"path": ["question"], "operator": "Equal", "valueText": raw_q},
-                    {"path": ["user"], "operator": "Equal", "valueText": user}
-                ]
-            })
-            .with_limit(1)
-            .do()
+        filter = Filter.by_property("question").equal(raw_q.strip()) & (
+            Filter.by_property("user").equal("both") | Filter.by_property("user").equal(requested_user)
         )
-        items = exact.get("data", {}).get("Get", {}).get("FAQ", [])
-        for obj in items:
-            db_q = normalize(obj.get("question", ""))
-            if db_q == normalized:
+        exact_res = collection.query.fetch_objects(
+            filters=filter,
+            return_properties=["question", "answer", "coachingTip"],
+            limit=3
+        )
+        for obj in exact_res.objects:
+            db_q = obj.properties.get("question", "").strip()
+            db_q_norm = normalize(db_q)
+            if db_q_norm == q_norm:
                 print("✅ Exact match confirmed.")
-                return f"{obj['answer'].strip()}\n\n**Coaching Tip:** {obj['coachingTip'].strip()}"
+                return {"response": format_response(obj)}
         print("⚠️ No strict match. Proceeding to vector search.")
     except Exception as e:
         print("Exact-match error:", e)
 
-    # --- 2. Vector Fallback ---
     try:
-        vector = (
-            client.query
-            .get("FAQ", ["question", "answer", "coachingTip"])
-            .with_where({
-                "path": ["user"],
-                "operator": "Equal",
-                "valueText": user
-            })
-            .with_near_text({"concepts": [raw_q]})
-            .with_additional(["distance"])
-            .with_limit(5)
-            .do()
+        vec_res = collection.query.near_text(
+            query=raw_q,
+            return_metadata=["distance"],
+            return_properties=["question", "answer", "coachingTip", "user"],
+            limit=5
         )
-        items = vector.get("data", {}).get("Get", {}).get("FAQ", [])
-        print(f"🔍 Retrieved {len(items)} vector matches")
+        objects = vec_res.objects
+        print(f"🔍 Retrieved {len(objects)} vector matches:")
 
-        seen = set()
-        deduped = []
-        for obj in items:
-            q = obj.get("question", "")
-            if all(fuzz.ratio(q, prev) <= 90 for prev in seen):
-                deduped.append(obj)
-                seen.add(q)
-        print(f"🧪 Filtered to {len(deduped)} usable fuzzy matches")
+        unique_faqs = []
+        questions_seen = []
+        for obj in objects:
+            if obj.properties.get("user", "").lower() not in [requested_user, "both"]:
+                continue
+            q_text = obj.properties.get("question", "").strip()
+            is_duplicate = any(fuzz.ratio(q_text, seen_q) > 90 for seen_q in questions_seen)
+            if not is_duplicate:
+                unique_faqs.append(obj)
+                questions_seen.append(q_text)
 
-        if deduped and float(deduped[0].get("_additional", {}).get("distance", 1.0)) <= 0.6:
+        print(f"🫹 After filtering and deduplication: {len(unique_faqs)} match(es) kept.")
+
+        for i, obj in enumerate(unique_faqs):
+            print(f"{i+1}. {obj.properties.get('question', '')} (distance: {obj.metadata.get('distance', '?')})")
+
+        if unique_faqs and float(unique_faqs[0].metadata.get("distance", 1.0)) <= 0.6:
             blocks = []
-            for i, obj in enumerate(deduped):
-                a = obj.get("answer", "").strip()
-                c = obj.get("coachingTip", "").strip()
-                blocks.append(f"Answer {i+1}:\n{a}\n\nCoaching Tip {i+1}: {c}")
+            for i, obj in enumerate(unique_faqs):
+                answer = obj.properties.get("answer", "").strip()
+                coaching = obj.properties.get("coachingTip", "").strip()
+                blocks.append(f"Answer {i+1}:\n{answer}\n\nCoaching Tip {i+1}: {coaching}")
             combined = "\n\n---\n\n".join(blocks)
-
             prompt = (
                 f"{SYSTEM_PROMPT}\n\n"
                 f"Question: {raw_q}\n\n"
-                f"Here are multiple answers and coaching tips from similar questions. "
-                f"Summarize them into a single helpful response for the user:\n\n{combined}"
+                f"Here are multiple answers and coaching tips from similar questions. Summarize them into a single helpful response for the user:\n\n{combined}"
             )
-
-            print("🌀 Sending summarization prompt to OpenAI...")
-            start = time.time()
+            print("Sending prompt to OpenAI.")
             reply = openai.ChatCompletion.create(
                 model="gpt-4",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=500,
-                temperature=0.5,
+                temperature=0.5
             )
-            end = time.time()
-            print(f"⏱️ OpenAI response time: {end - start:.2f} seconds")
-
-            text = reply.choices[0].message.content.strip()
-            return text
+            return {"response": reply.choices[0].message.content.strip()}
         else:
-            print("❌ No high-quality vector match. Returning fallback.")
+            print("❌ No high-quality vector match. Returning fallback message.")
     except Exception as e:
         print("Vector-search error:", e)
 
-    return "I do not possess the information to answer that question. Try asking me something about financial, retirement, estate, or healthcare planning."
+    return {
+        "response": (
+            "I do not possess the information to answer that question. "
+            "Try asking me something about financial, retirement, estate, or healthcare planning."
+        )
+    }
+
+def format_response(obj):
+    answer = obj.properties.get("answer", "").strip()
+    tip = obj.properties.get("coachingTip", "").strip()
+    if tip:
+        return f"{answer}\n\n**Coaching Tip:** {tip}"
+    return answer
+
+@app.get("/faq-count")
+def count_faqs():
+    try:
+        count = client.collections.get("FAQ").aggregate.over_all(total_count=True).metadata.total_count
+        return {"count": count}
+    except Exception as e:
+        logger.exception("❌ Error counting FAQs")
+        raise HTTPException(status_code=500, detail=str(e))
