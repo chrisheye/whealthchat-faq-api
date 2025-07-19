@@ -106,6 +106,9 @@ async def get_faq(request: Request):
             limit=5
         )
         objects = vec_res.objects
+        print("🔬 Raw vector results:")
+        for i, obj in enumerate(objects):
+            print(f"{i+1}. Q: {obj.properties.get('question', '')} | user: {obj.properties.get('user', '')} | distance: {obj.metadata.get('distance', '?')}")
         print(f"🧪 Retrieved {len(objects)} vector matches.")
         results = []
         for obj in objects:
