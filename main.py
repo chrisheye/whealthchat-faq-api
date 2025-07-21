@@ -166,7 +166,7 @@ def format_response(obj):
         return f"{answer}\n\n**Coaching Tip:** {tip}"
     return answer
 
-@app.get("/faq-count")
+
 @app.get("/faq-count")
 def count_faqs():
     try:
@@ -176,8 +176,11 @@ def count_faqs():
         logger.exception("❌ Error counting FAQs")
         raise HTTPException(status_code=500, detail=str(e))
 
+   
 from fastapi.responses import JSONResponse
 
-@app.get("/")
+@app.get("/", include_in_schema=False)
+@app.head("/", include_in_schema=False)
 def root():
     return JSONResponse({"status": "WhealthChat API is running"})
+
