@@ -106,7 +106,7 @@ async def get_faq(request: Request):
             query=raw_q,
             return_metadata=["distance"],
             return_properties=["question", "answer", "coachingTip", "user"],
-            limit=5
+            limit=4
         )
         objects = vec_res.objects
         print(f"🔍 Retrieved {len(objects)} vector matches:")
@@ -143,7 +143,7 @@ async def get_faq(request: Request):
             )
             print("Sending prompt to OpenAI.")
             reply = openai.ChatCompletion.create(
-                model="gpt-4",
+                model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=500,
                 temperature=0.5
