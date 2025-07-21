@@ -167,6 +167,7 @@ def format_response(obj):
     return answer
 
 @app.get("/faq-count")
+@app.get("/faq-count")
 def count_faqs():
     try:
         count = client.collections.get("FAQ").aggregate.over_all(total_count=True).metadata.total_count
@@ -174,3 +175,9 @@ def count_faqs():
     except Exception as e:
         logger.exception("❌ Error counting FAQs")
         raise HTTPException(status_code=500, detail=str(e))
+
+from fastapi.responses import JSONResponse
+
+@app.get("/")
+def root():
+    return JSONResponse({"status": "WhealthChat API is running"})
