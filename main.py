@@ -140,7 +140,10 @@ async def get_faq(request: Request):
             prompt = (
                 f"{SYSTEM_PROMPT}\n\n"
                 f"Question: {raw_q}\n\n"
-                f"Here are multiple answers and coaching tips from similar questions. Summarize them into a single helpful response for the user:\n\n{combined}"
+                f"Here are multiple answers and coaching tips from similar questions.\n\n"
+                f"Summarize the answers into one helpful response. Then provide ONE Coaching Tip for the user.\n"
+                f"👉 Break all text into readable paragraphs of no more than 3 sentences each — especially the Coaching Tip.\n\n"
+                f"{combined}"
             )
             print("Sending prompt to OpenAI.")
             reply = openai.ChatCompletion.create(
