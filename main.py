@@ -30,6 +30,8 @@ SYSTEM_PROMPT = (
     "**Do not include links, downloads, or tools in the Coaching Tip — those must go in the main answer only.**\n"
     "**Preserve bold formatting from the source answers wherever it appears in the summary.**\n"
     "When appropriate, encourage users not to isolate themselves when facing difficult decisions. You may include the phrase **never worry alone** (in bold). Use sentence case unless it begins a sentence. Do not use the phrase in every response—only when it is contextually appropriate and feels natural.\n"
+    "Use line breaks to break long answers and coaching tips into clear, readable **paragraphs of no more than 3 sentences each**.\n"
+    "Do not shorten the total length of the answer or coaching tip — only break it into smaller paragraphs to improve readability.\n"
     "If multiple Coaching Tips are provided, summarize them into ONE final Coaching Tip for the user."
     "If a long-term care calculator is mentioned, refer only to the custom calculator provided by WhealthChat — not generic online tools."
 )
