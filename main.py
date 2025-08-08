@@ -109,7 +109,7 @@ async def get_faq(request: Request):
             query=raw_q,
             return_metadata=["distance"],
             return_properties=["question", "answer", "coachingTip", "user"],
-            limit=4
+            limit=3
         )
         objects = vec_res.objects
         print(f"🔍 Retrieved {len(objects)} vector matches:")
