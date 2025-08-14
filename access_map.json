@@ -1,4 +1,4 @@
 {
-  "public": ["whealthchat"],
-  "pendleton": ["whealthchat", "pendleton"]
+  "public": ["WhealthChat"],
+  "pendleton": ["WhealthChat", "pendleton"]
 }
