@@ -150,8 +150,8 @@ async def get_faq(request: Request):
             return_properties=["question", "answer", "coachingTip", "user"],
             limit=3
 )
-        objects = vec_res.objects
-        print(f"🔍 Retrieved {len(objects)} vector matches:")
+    objects = vec_res.objects
+    print("📦 vector sources:", [o.properties.get("source") for o in objects])
 
         unique_faqs = []
         questions_seen = []
