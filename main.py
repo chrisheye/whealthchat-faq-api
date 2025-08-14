@@ -128,6 +128,13 @@ async def get_faq(request: Request):
             db_q_norm = normalize(db_q)
             if db_q_norm == q_norm:
                 print("✅ Exact match confirmed.")
+                src = (obj.properties.get("source") or "").strip()
+            if src not in allowed:
+                print("⛔ blocked exact-match source:", src, "allowed:", allowed)
+            else:
+    return {"response": format_response(obj)}
+
+                
                 return {"response": format_response(obj)}
         print("⚠️ No strict match. Proceeding to vector search.")
     
@@ -152,6 +159,11 @@ async def get_faq(request: Request):
         unique_faqs = []
         questions_seen = []
         for obj in objects:
+            src = (obj.properties.get("source") or "").strip()
+            if src not in allowed:
+                print("⛔ blocked vector source:", src, "allowed:", allowed)
+                continue
+
             if obj.properties.get("user", "").lower() not in [requested_user, "both"]:
                 continue
             q_text = obj.properties.get("question", "").strip()
@@ -229,4 +241,4 @@ from fastapi.responses import JSONResponse
 @app.get("/", include_in_schema=False)
 @app.head("/", include_in_schema=False)
 def root():
-    return JSONResponse({"status": "WhealthChat API is running"}) 
+    return JSONResponse({"status": "WhealthChat API is running"})
