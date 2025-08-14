@@ -65,31 +65,32 @@ SYSTEM_PROMPT = (
 def normalize(text):
     return re.sub(r"[^\w\s]", "", text.lower().strip())
 
-PROTECTED_BRANDS = {"pendleton"}  # add more (lowercase) as you onboard firms
+PROTECTED_BRANDS = {"pendleton", "pendleton square"}  # lowercase
+BRAND_TO_SOURCE = {
+    "pendleton": "pendleton",
+    "pendleton square": "pendleton",  # alias → source slug
+}
 
 def sanitize_question_for_disallowed_brands(question: str, allowed_sources: list[str]) -> str:
-    """
-    If the user mentions a protected brand that is NOT in allowed_sources,
-    replace it with a generic phrase so the LLM doesn't echo it back.
-    """
     allowed_lower = {s.lower() for s in allowed_sources}
 
-    def replace_brand(q: str, brand: str, alias_phrases: list[tuple[str, str]]) -> str:
-        for pattern, repl in alias_phrases:
+    def replace_brand(q: str, brand: str, alias_patterns: list[tuple[str, str]]) -> str:
+        for pattern, repl in alias_patterns:
             q = re.sub(pattern, repl, q, flags=re.IGNORECASE)
-        return q
+        return re.sub(r"\s{2,}", " ", q).strip()  # tidy extra spaces
 
     q = question
     for brand in PROTECTED_BRANDS:
-        # if the brand name is not an allowed source for this request, sanitize mentions
-        if brand not in allowed_lower:
-            # simple patterns that cover “Pendleton”, “Pendleton Trust”, and possessives
-            brand_patterns = [
+        src_slug = BRAND_TO_SOURCE.get(brand, brand)
+        if src_slug not in allowed_lower:
+            # covers “<brand> trust”, possessives, and standalone brand
+            patterns = [
                 (rf"\b{re.escape(brand)}\s+trust('?s)?\b", "the trust company"),
                 (rf"\b{re.escape(brand)}('?s)?\b", "the firm"),
             ]
-            q = replace_brand(q, brand, brand_patterns)
+            q = replace_brand(q, brand, patterns)
     return q
+
 
 # --- APP SETUP ---
 app = FastAPI()
