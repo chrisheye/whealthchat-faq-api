@@ -30,13 +30,13 @@ def source_filter(allowed_sources: list[str]):
 
 
 def and_filters(*filters):
-    # Helper: AND together any non-None filters
     filt_list = [f for f in filters if f is not None]
     if not filt_list:
         return None
     if len(filt_list) == 1:
         return filt_list[0]
-    return WvFilter.all_of(filt_list)
+    return Filter.all_of(filt_list)
+
 
 
 logging.basicConfig(level=logging.DEBUG)
