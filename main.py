@@ -12,6 +12,33 @@ from rapidfuzz import fuzz
 import time
 import logging
 
+import json, os
+from pathlib import Path
+
+ACCESS_MAP_PATH = os.getenv("ACCESS_MAP_PATH", "access_map.json")
+with open(Path(ACCESS_MAP_PATH), "r", encoding="utf-8") as f:
+    ACCESS_MAP = json.load(f)
+
+def allowed_sources_for_request(request):
+    tenant = request.headers.get("X-Tenant") or request.query_params.get("tenant") or "public"
+    return ACCESS_MAP.get(tenant, ACCESS_MAP["public"])
+
+from weaviate.classes.query import Filter as WvFilter
+
+def source_filter(allowed_sources: list[str]):
+    return Filter.by_property("source").contains_any(allowed_sources)
+
+
+def and_filters(*filters):
+    # Helper: AND together any non-None filters
+    filt_list = [f for f in filters if f is not None]
+    if not filt_list:
+        return None
+    if len(filt_list) == 1:
+        return filt_list[0]
+    return WvFilter.all_of(filt_list)
+
+
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
@@ -77,6 +104,8 @@ async def get_faq(request: Request):
     raw_q = body.get("query", "").strip()
     requested_user = body.get("user", "").strip().lower()
     q_norm = normalize(raw_q)
+    allowed = allowed_sources_for_request(request)
+    tenant_filt = source_filter(allowed)
 
     if not raw_q:
         raise HTTPException(status_code=400, detail="Missing 'query' in request body.")
@@ -85,10 +114,15 @@ async def get_faq(request: Request):
     print(f"Received question: {raw_q}")
     print(f"🔎 Checking exact match for normalized question: {q_norm}")
 
+
+
     try:
-        filter = Filter.by_property("question").equal(raw_q.strip()) & (
-            Filter.by_property("user").equal("both") | Filter.by_property("user").equal(requested_user)
-        )
+        user_filt = Filter.by_property("user").equal("both") | Filter.by_property("user").equal(requested_user)
+        combined_filt = and_filters(user_filt, tenant_filt)
+
+        filter = Filter.by_property("question").equal(raw_q.strip()) & combined_filt
+        print("🔎 exact-match allowed_sources:", allowed)
+
         exact_res = collection.query.fetch_objects(
             filters=filter,
             return_properties=["question", "answer", "coachingTip"],
@@ -101,16 +135,21 @@ async def get_faq(request: Request):
                 print("✅ Exact match confirmed.")
                 return {"response": format_response(obj)}
         print("⚠️ No strict match. Proceeding to vector search.")
+    
     except Exception as e:
         print("Exact-match error:", e)
 
     try:
+        user_filt = Filter.by_property("user").equal("both") | Filter.by_property("user").equal(requested_user)
+        combined_filt = and_filters(user_filt, tenant_filt)
+
         vec_res = collection.query.near_text(
             query=raw_q,
+            filters=combined_filt,                     # ← add this
             return_metadata=["distance"],
             return_properties=["question", "answer", "coachingTip", "user"],
             limit=3
-        )
+)
         objects = vec_res.objects
         print(f"🔍 Retrieved {len(objects)} vector matches:")
 
@@ -194,4 +233,3 @@ from fastapi.responses import JSONResponse
 @app.head("/", include_in_schema=False)
 def root():
     return JSONResponse({"status": "WhealthChat API is running"})
-
