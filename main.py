@@ -37,6 +37,9 @@ def and_filters(*filters):
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+
+
+
 SYSTEM_PROMPT = (
     "You are a helpful assistant. Respond using Markdown with consistent formatting.\n\n"
     "Answer the user's question clearly and supportively.\n"
@@ -58,7 +61,6 @@ SYSTEM_PROMPT = (
     "Summarize multiple tips into one helpful, well-structured Coaching Tip for the user.\n"
     "If a long-term care calculator is mentioned, refer ONLY to the WhealthChat custom calculator."
 )
-
 
 def normalize(text):
     return re.sub(r"[^\w\s]", "", text.lower().strip())
@@ -214,9 +216,12 @@ async def get_faq(request: Request):
                 coaching = obj.properties.get("coachingTip", "").strip()
                 blocks.append(f"Answer {i+1}:\n{answer}\n\nCoaching Tip {i+1}: {coaching}")
             combined = "\n\n---\n\n".join(blocks)
+            # ... after you build `combined` from blocks, right before prompt:
+            safe_q = sanitize_question_for_disallowed_brands(raw_q, allowed)
+
             prompt = (
                 f"{SYSTEM_PROMPT}\n\n"
-                f"Question: {raw_q}\n\n"
+                f"Question: {safe_q}\n\n"
                 f"Here are multiple answers and coaching tips from similar questions.\n\n"
                 f"1. Summarize the answers into one helpful response.\n"
                 f"2. Then write ONE Coaching Tip that is no more than 3 sentences long. It should be clear, supportive, and behaviorally insightful.\n"
