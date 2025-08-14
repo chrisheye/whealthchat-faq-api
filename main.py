@@ -171,6 +171,10 @@ async def get_faq(request: Request):
                 unique_faqs.append(obj)
                 questions_seen.append(q_text)
 
+        print("🧾 used sources/questions:", [
+        (o.properties.get("source"), o.properties.get("question")) for o in unique_faqs
+        ])
+
         print(f"🫹 After filtering and deduplication: {len(unique_faqs)} match(es) kept.")
 
         for i, obj in enumerate(unique_faqs):
