@@ -145,13 +145,14 @@ async def get_faq(request: Request):
 
         vec_res = collection.query.near_text(
             query=raw_q,
-            filters=combined_filt,                     # ← add this
+            filters=combined_filt,
             return_metadata=["distance"],
-            return_properties=["question", "answer", "coachingTip", "user"],
+            return_properties=["question", "answer", "coachingTip", "user", "source"],  # include source for debugging
             limit=3
-)
-    objects = vec_res.objects
-    print("📦 vector sources:", [o.properties.get("source") for o in objects])
+        )
+        objects = vec_res.objects
+        print("📦 vector sources:", [o.properties.get("source") for o in objects])
+        print(f"🔍 Retrieved {len(objects)} vector matches:")
 
         unique_faqs = []
         questions_seen = []
@@ -169,7 +170,6 @@ async def get_faq(request: Request):
         for i, obj in enumerate(unique_faqs):
             distance = getattr(obj.metadata, "distance", '?')
             print(f"{i+1}. {obj.properties.get('question', '')} (distance: {distance})")
-
 
         if unique_faqs and getattr(unique_faqs[0].metadata, "distance", 1.0) <= 0.6:
             blocks = []
@@ -199,8 +199,10 @@ async def get_faq(request: Request):
             return {"response": reply.choices[0].message.content.strip()}
         else:
             print("❌ No high-quality vector match. Returning fallback message.")
+
     except Exception as e:
         print("Vector-search error:", e)
+
 
     return {
         "response": (
