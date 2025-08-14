@@ -23,11 +23,8 @@ def allowed_sources_for_request(request):
     tenant = request.headers.get("X-Tenant") or request.query_params.get("tenant") or "public"
     return ACCESS_MAP.get(tenant, ACCESS_MAP["public"])
 
-from weaviate.classes.query import Filter as WvFilter
-
 def source_filter(allowed_sources: list[str]):
     return Filter.by_property("source").contains_any(allowed_sources)
-
 
 def and_filters(*filters):
     filt_list = [f for f in filters if f is not None]
@@ -36,8 +33,6 @@ def and_filters(*filters):
     if len(filt_list) == 1:
         return filt_list[0]
     return Filter.all_of(filt_list)
-
-
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -63,7 +58,6 @@ SYSTEM_PROMPT = (
     "Summarize multiple tips into one helpful, well-structured Coaching Tip for the user.\n"
     "If a long-term care calculator is mentioned, refer ONLY to the WhealthChat custom calculator."
 )
-
 
 
 def normalize(text):
@@ -115,7 +109,6 @@ async def get_faq(request: Request):
     print(f"🔎 Checking exact match for normalized question: {q_norm}")
 
 
-
     try:
         user_filt = Filter.by_property("user").equal("both") | Filter.by_property("user").equal(requested_user)
         combined_filt = and_filters(user_filt, tenant_filt)
@@ -125,9 +118,11 @@ async def get_faq(request: Request):
 
         exact_res = collection.query.fetch_objects(
             filters=filter,
-            return_properties=["question", "answer", "coachingTip"],
+            return_properties=["question", "answer", "coachingTip", "source"],  # add source
             limit=3
         )
+        print("📦 exact sources:", [o.properties.get("source") for o in exact_res.objects])
+
         for obj in exact_res.objects:
             db_q = obj.properties.get("question", "").strip()
             db_q_norm = normalize(db_q)
@@ -234,4 +229,4 @@ from fastapi.responses import JSONResponse
 @app.get("/", include_in_schema=False)
 @app.head("/", include_in_schema=False)
 def root():
-    return JSONResponse({"status": "WhealthChat API is running"})
+    return JSONResponse({"status": "WhealthChat API is running"}) 
