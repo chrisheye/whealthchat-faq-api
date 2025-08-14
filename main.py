@@ -63,6 +63,32 @@ SYSTEM_PROMPT = (
 def normalize(text):
     return re.sub(r"[^\w\s]", "", text.lower().strip())
 
+PROTECTED_BRANDS = {"pendleton"}  # add more (lowercase) as you onboard firms
+
+def sanitize_question_for_disallowed_brands(question: str, allowed_sources: list[str]) -> str:
+    """
+    If the user mentions a protected brand that is NOT in allowed_sources,
+    replace it with a generic phrase so the LLM doesn't echo it back.
+    """
+    allowed_lower = {s.lower() for s in allowed_sources}
+
+    def replace_brand(q: str, brand: str, alias_phrases: list[tuple[str, str]]) -> str:
+        for pattern, repl in alias_phrases:
+            q = re.sub(pattern, repl, q, flags=re.IGNORECASE)
+        return q
+
+    q = question
+    for brand in PROTECTED_BRANDS:
+        # if the brand name is not an allowed source for this request, sanitize mentions
+        if brand not in allowed_lower:
+            # simple patterns that cover “Pendleton”, “Pendleton Trust”, and possessives
+            brand_patterns = [
+                (rf"\b{re.escape(brand)}\s+trust('?s)?\b", "the trust company"),
+                (rf"\b{re.escape(brand)}('?s)?\b", "the firm"),
+            ]
+            q = replace_brand(q, brand, brand_patterns)
+    return q
+
 # --- APP SETUP ---
 app = FastAPI()
 app.add_middleware(
