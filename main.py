@@ -150,6 +150,8 @@ def version_check():
 async def get_faq(request: Request):
     body = await request.json()
     raw_q = body.get("query", "").strip()
+    if raw_q.startswith("{"):
+        return {"response": "⚠️ Invalid query format. Please ask a plain language question."}
     requested_user = body.get("user", "").strip().lower()
     q_norm = normalize(raw_q)
     allowed = allowed_sources_for_request(request)
