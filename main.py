@@ -11,6 +11,9 @@ import re
 from rapidfuzz import fuzz
 import time
 import logging
+import asyncio
+from contextlib import suppress
+
 
 import json, os
 from pathlib import Path
@@ -116,6 +119,28 @@ client = weaviate.connect_to_wcs(
 openai.api_key = OPENAI_API_KEY
 collection = client.collections.get("FAQ")
 print("🔍 Available collections:", client.collections.list_all())
+
+# --- KEEP-ALIVE: keep Weaviate gRPC warm to avoid long first-query stalls -----
+KEEPALIVE_INTERVAL_SEC = 150  # 2.5 minutes; you can use 120–240
+
+async def _weaviate_keepalive_loop():
+    # small delay so the app and client finish starting
+    await asyncio.sleep(5)
+    while True:
+        try:
+            coll = client.collections.get("FAQ")
+            # cheap "are you there?" call
+            _ = coll.aggregate.over_all(total_count=True)
+            logging.info("Weaviate keep-alive: OK")
+        except Exception as e:
+            logging.warning(f"Weaviate keep-alive error: {e}")
+        await asyncio.sleep(KEEPALIVE_INTERVAL_SEC)
+
+@app.on_event("startup")
+async def _start_keepalive():
+    # fire-and-forget background task
+    with suppress(Exception):
+        asyncio.create_task(_weaviate_keepalive_loop())
 
 @app.get("/version")
 def version_check():
