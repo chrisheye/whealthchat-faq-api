@@ -11,6 +11,7 @@ import re
 from rapidfuzz import fuzz
 import time
 import logging
+import requests
 
 import json, os
 from pathlib import Path
@@ -279,17 +280,56 @@ class PersonaRequest(BaseModel):
     answers: Dict
     personasUrl: str
 
+
+
 @app.post("/persona-classify")
 def persona_classify(req: PersonaRequest):
-    # No AI yet—just a fixed response so we can test the wire
-    return {
-        "persona": {"id": "Well-Prepared Planner"},
-        "meta": {
-            "id": "Well-Prepared Planner",
-            "confidence": 1.0,
-            "rationale": "stub response (no AI yet)"
+    try:
+        # 1. Load personas JSON from the provided URL
+        resp = requests.get(req.personasUrl, timeout=5)
+        resp.raise_for_status()
+        personas = resp.json()
+    except Exception as e:
+        return {
+            "persona": {"id": "Error"},
+            "meta": {"id": "Error", "confidence": 0, "rationale": f"Could not fetch personas: {e}"}
         }
-    }
+
+    # 2. Build a prompt for OpenAI
+    prompt = (
+        "You are an assistant that classifies a user's answers into the best matching persona.\n\n"
+        f"User answers:\n{json.dumps(req.answers, indent=2)}\n\n"
+        f"Persona options:\n{json.dumps(personas, indent=2)}\n\n"
+        "Return ONLY a JSON object with:\n"
+        "{ \"id\": <persona id>, \"confidence\": <0-1>, \"rationale\": <why this persona fits> }\n"
+    )
+
+    try:
+        reply = openai.ChatCompletion.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=500,
+            temperature=0
+        )
+        text = reply.choices[0].message.content.strip()
+
+        # Try to parse JSON from the model
+        result = json.loads(text)
+        persona_id = result.get("id", "Unknown")
+        rationale = result.get("rationale", "No rationale provided")
+        confidence = result.get("confidence", 0.5)
+
+        return {
+            "persona": {"id": persona_id},
+            "meta": {"id": persona_id, "confidence": confidence, "rationale": rationale}
+        }
+
+    except Exception as e:
+        return {
+            "persona": {"id": "Error"},
+            "meta": {"id": "Error", "confidence": 0, "rationale": f"AI classification failed: {e}"}
+        }
+
 # --- end stub ---
 
    
