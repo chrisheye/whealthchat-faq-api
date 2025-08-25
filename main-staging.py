@@ -272,24 +272,9 @@ def count_faqs():
         logger.exception("❌ Error counting FAQs")
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# --- persona-classify STUB (staging) ---
+# --- persona-classify (staging) — CLEAN BLOCK ---
 from typing import Dict
 from pydantic import BaseModel
-
-class PersonaRequest(BaseModel):
-    answers: Dict
-    personasUrl: str
-
-
-
-@app.post("/persona-classify")
-# --- persona-classify (staging) — FULL DROP-IN REPLACEMENT ---
-from typing import Dict
-from pydantic import BaseModel
-import requests
-import json
-import openai
 
 class PersonaRequest(BaseModel):
     answers: Dict
@@ -395,6 +380,8 @@ def persona_classify(req: PersonaRequest):
             "meta": {"id": "Error", "confidence": 0, "rationale": f"AI classification failed: {e}"}
         }
 # --- end stub ---
+
+
    
 from fastapi.responses import JSONResponse
 
