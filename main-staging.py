@@ -222,15 +222,27 @@ async def get_faq(request: Request):
             safe_q = sanitize_question_for_disallowed_brands(raw_q, allowed)
 
             prompt = (
-                f"{SYSTEM_PROMPT}\n\n"
-                f"Question: {safe_q}\n\n"
-                f"Here are multiple answers and coaching tips from similar questions.\n\n"
-                f"1. Summarize the answers into one helpful response.\n"
-                f"2. Then write ONE Coaching Tip that is no more than 3 sentences long. It should be clear, supportive, and behaviorally insightful.\n"
-                f"3. 👉 Break all text into readable paragraphs of no more than 3 sentences each — especially the Coaching Tip.\n"
-                f"4. ❌ Do NOT include any links, downloads, or tools in the Coaching Tip. Those belong in the answer only.\n\n"
-                f"{combined}"
+                "You are an assistant that classifies a user's answers into the single best matching persona.\n"
+                "Choose exactly ONE persona id from the provided list and explain briefly why.\n\n"
+                "HARD CONSTRAINTS (must follow; use ONLY the fields provided):\n"
+                "- Respect age bands explicitly stated in persona descriptions; do not select a persona whose typical age band clearly conflicts with the user's age.\n"
+                "- 'Sandwich Generation Planner' requires BOTH of these to be TRUE based on the user's 'caregiving' text:\n"
+                "    (a) indicates caregiving for a parent (e.g., contains 'parent' or 'parents'), AND\n"
+                "    (b) indicates caregiving for a child/dependent (e.g., contains 'child' or 'children').\n"
+                "  If either (a) or (b) is not present in the caregiving text, do NOT select Sandwich Generation.\n"
+                "- If age is 55–70 and caregiving indicates a parent but there is no mention of child/children, prefer 'Responsible Supporter' over Sandwich Generation.\n"
+                "- Only use information explicitly present in these fields: age, gender, marital_status, life_stage, health_status, caregiving, risk_tolerance, planning_horizon, decision_style, memory_status, life_event, primary_concerns.\n"
+                "- Do NOT infer children unless the word 'child' or 'children' appears in 'caregiving'.\n\n"
+                "TIE-BREAKER GUIDELINES (use only if constraints above are satisfied):\n"
+                "- Self-Directed Investor: high/very high risk tolerance AND research/analyze decision style; caregiving is not the primary driver.\n"
+                "- Empowered Widow: 60+ with widowhood or 'death of a spouse'.\n"
+                "- HENRY: roughly 35–50, working full-time, often higher risk or explicit tax focus.\n\n"
+                f"User answers:\n{json.dumps(req.answers, indent=2)}\n\n"
+                f"Persona options (subset):\n{json.dumps(catalog, indent=2)}\n\n"
+                "Return ONLY a JSON object with exactly these fields:\n"
+                '{ "id": "<persona id>", "confidence": <0..1>, "rationale": "<<=30 words>" }'
             )
+
 
             print("Sending prompt to OpenAI.")
             reply = openai.ChatCompletion.create(
