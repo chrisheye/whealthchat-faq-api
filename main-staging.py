@@ -234,12 +234,13 @@ async def get_faq(request: Request):
 
             print("Sending prompt to OpenAI.")
             reply = openai.ChatCompletion.create(
-                model="gpt-4",
+                model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=500,
-                temperature=0.5
+                temperature=0,
+                response_format={"type": "json_object"}  # <= added line
             )
-            return {"response": reply.choices[0].message.content.strip()}
+            text = reply.choices[0].message.content.strip()
         else:
             print("❌ No high-quality vector match. Returning fallback message.")
 
