@@ -270,6 +270,28 @@ def count_faqs():
         logger.exception("❌ Error counting FAQs")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# --- persona-classify STUB (staging) ---
+from typing import Dict
+from pydantic import BaseModel
+
+class PersonaRequest(BaseModel):
+    answers: Dict
+    personasUrl: str
+
+@app.post("/persona-classify")
+def persona_classify(req: PersonaRequest):
+    # No AI yet—just a fixed response so we can test the wire
+    return {
+        "persona": {"id": "Well-Prepared Planner"},
+        "meta": {
+            "id": "Well-Prepared Planner",
+            "confidence": 1.0,
+            "rationale": "stub response (no AI yet)"
+        }
+    }
+# --- end stub ---
+
    
 from fastapi.responses import JSONResponse
 
