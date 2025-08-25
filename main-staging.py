@@ -169,7 +169,6 @@ async def get_faq(request: Request):
     except Exception as e:
         print("Exact-match error:", e)
 
-
     try:
         user_filt = Filter.by_property("user").equal("both") | Filter.by_property("user").equal(requested_user)
         combined_filt = and_filters(user_filt, tenant_filt)
@@ -220,52 +219,6 @@ async def get_faq(request: Request):
             combined = "\n\n---\n\n".join(blocks)
             # ... after you build `combined` from blocks, right before prompt:
             safe_q = sanitize_question_for_disallowed_brands(raw_q, allowed)
-
-    # 3) Prompt for the classifier — uses ONLY existing fields; compares against full catalog
-            prompt = (
-                "You classify a user's answers into the single best matching persona.\n"
-                "Choose exactly ONE persona id from the provided list and explain briefly why.\n\n"
-
-                "HARD CONSTRAINTS (must follow; use ONLY the fields provided):\n"
-                "- Consider ALL personas in the provided catalog (do not assume a smaller subset).\n"
-                "- Respect clear age signals from the user's 'age' if relevant to a persona's typical profile.\n"
-                "- 'Sandwich Generation Planner' requires BOTH of these to be TRUE in the user's 'caregiving' text:\n"
-                "    (a) caregiving for a parent (contains 'parent' or 'parents') AND\n"
-                "    (b) caregiving for a child/dependent (contains 'child' or 'children').\n"
-                "  If either (a) or (b) is missing, do NOT select Sandwich Generation.\n"
-                "- If age is between ~55–70 AND 'caregiving' mentions parent but NOT child/children,\n"
-                "  prefer 'Responsible Supporter' over Sandwich Generation.\n"
-                "- 'Empowered Widow' requires clear widowhood signals (e.g., 'widow', 'death of a spouse').\n"
-                "- 'Business Owner Nearing Exit' requires business/exit/sale intent (e.g., 'business', 'exit', 'sell').\n"
-                "- 'Self-Directed Investor' fits best when risk tolerance is high/very high AND decision style indicates\n"
-                "  research/analyze orientation (e.g., 'research', 'analyz').\n"
-                "- 'HENRY (High Earner, Not Rich Yet)' generally aligns with ~35–50, working full-time, often higher risk or explicit tax focus.\n"
-                "- Use ONLY these user fields (do not invent others): age, gender, marital_status, life_stage, health_status,\n"
-                "  caregiving, risk_tolerance, planning_horizon, decision_style, memory_status, life_event, primary_concerns.\n"
-                "- Do NOT infer children unless 'child' or 'children' appears in 'caregiving'.\n\n"
-
-                "TIE-BREAKERS (only if multiple personas satisfy all constraints):\n"
-                "- Prefer the persona whose Overview/Key Characteristics/Primary Goals most directly echo the user's text.\n"
-                "- If still tied, choose the persona that would be most actionable for planning given the user's concerns.\n\n"
-
-                f"User answers:\n{json.dumps(req.answers, indent=2)}\n\n"
-                f"Persona options (use ALL):\n{json.dumps(catalog, indent=2)}\n\n"
-                "Return ONLY a JSON object with exactly these fields:\n"
-                '{ "id": "<persona id>", "confidence": <0..1>, "rationale": "<<=30 words>" }'
-            )
-
-
-
-            print("Sending prompt to OpenAI.")
-            reply = openai.ChatCompletion.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=500,
-                temperature=0
-            )
-            answer_text = reply.choices[0].message.content.strip()
-            return {"response": answer_text}
-
         else:
             print("❌ No high-quality vector match. Returning fallback message.")
 
@@ -298,6 +251,7 @@ def count_faqs():
         raise HTTPException(status_code=500, detail=str(e))
 
 # --- persona-classify (staging) — CLEAN BLOCK ---
+# --- persona-classify (staging) — GUARDED BLOCK ---
 from typing import Dict
 from pydantic import BaseModel
 
@@ -309,7 +263,8 @@ class PersonaRequest(BaseModel):
 def persona_classify(req: PersonaRequest):
     """
     Classify a user's answers into the best persona using OpenAI,
-    then return the chosen persona id + rationale.
+    with strict prompt guardrails and server-side validations.
+    Returns: {"persona":{"id":...}, "meta":{"id":..., "confidence":..., "rationale":...}}
     """
     # 1) Load personas JSON from the provided URL
     try:
@@ -322,7 +277,7 @@ def persona_classify(req: PersonaRequest):
             "meta": {"id": "Error", "confidence": 0, "rationale": f"Could not fetch personas: {e}"}
         }
 
-    # 2) Build a compact catalog to keep the prompt small & reliable
+    # 2) Build a compact catalog to keep the prompt stable
     catalog = []
     if isinstance(personas, list):
         for p in personas:
@@ -337,15 +292,14 @@ def persona_classify(req: PersonaRequest):
                 "primaryGoals": p.get("primaryGoals", [])
             })
     else:
-        # If your JSON is an object keyed by persona name
         for key, p in (personas or {}).items():
-            pid = p.get("id") or p.get("name") or p.get("title") or key
+            pid = (p or {}).get("id") or (p or {}).get("name") or (p or {}).get("title") or key
             catalog.append({
                 "id": pid,
-                "name": p.get("name") or pid,
-                "overview": p.get("overview", ""),
-                "keyCharacteristics": p.get("keyCharacteristics", []),
-                "primaryGoals": p.get("primaryGoals", [])
+                "name": (p or {}).get("name") or pid,
+                "overview": (p or {}).get("overview", ""),
+                "keyCharacteristics": (p or {}).get("keyCharacteristics", []),
+                "primaryGoals": (p or {}).get("primaryGoals", [])
             })
 
     if not catalog:
@@ -354,15 +308,43 @@ def persona_classify(req: PersonaRequest):
             "meta": {"id": "Error", "confidence": 0, "rationale": "No personas found in JSON"}
         }
 
-    # 3) Prompt for the classifier
+    # 3) Prompt with explicit field limits + rules (no invented fields)
+    allowed_ids = [p["id"] for p in catalog]
+    FIELDS_ALLOWED = [
+        "age","gender","marital_status","life_stage","health_status",
+        "caregiving","risk_tolerance","planning_horizon","decision_style",
+        "memory_status","life_event","primary_concerns"
+    ]
+
     prompt = (
-        "You are an assistant that classifies a user's answers into the single best matching persona.\n"
-        "Choose exactly ONE persona id from the provided list and explain briefly why.\n\n"
-        f"User answers:\n{json.dumps(req.answers, indent=2)}\n\n"
-        f"Persona options (subset):\n{json.dumps(catalog, indent=2)}\n\n"
-        "Return ONLY a JSON object with exactly these fields:\n"
-        '{ "id": "<persona id>", "confidence": <0..1>, "rationale": "<<=30 words>" }'
+        "You are PersonaClassifier. Pick EXACTLY ONE persona from ALLOWED_IDS using ONLY FIELDS_ALLOWED.\n"
+        "NEVER invent fields, ages, or personas.\n\n"
+
+        "HARD CONSTRAINTS:\n"
+        "- Use ONLY these user fields: " + ", ".join(FIELDS_ALLOWED) + ".\n"
+        "- Do NOT infer children unless the user's 'caregiving' TEXT explicitly contains 'child' or 'children'.\n"
+        "- 'Sandwich Generation Planner' REQUIRES BOTH: 'parent'/'parents' AND 'child'/'children' in caregiving text.\n"
+        "- If age is provided and clearly conflicts with a persona’s typical profile, down-rank that persona.\n"
+        "- Prefer 'Responsible Supporter' over 'Sandwich' when age is ~55–70 AND caregiving mentions parent(s) BUT NOT child/children.\n"
+        "- 'Empowered Widow' REQUIRES widowhood signals (e.g., 'widow', 'death of spouse').\n"
+        "- 'Business Owner Nearing Exit' REQUIRES business/exit/sale intent.\n"
+        "- 'Self-Directed Investor' aligns with high risk tolerance + research/analyze decision style.\n"
+        "- 'HENRY (High Earner, Not Rich Yet)' typically ~35–50 and working full-time; tax/earnings focus is a useful signal.\n"
+        "- If NO persona satisfies constraints, return id:'no_match'.\n\n"
+
+        "TIE-BREAKERS:\n"
+        "1) Highest coverage of explicit user fields. 2) Age proximity (if present). 3) Goals/concerns alignment.\n\n"
+
+        "OUTPUT STRICTLY AS JSON (no prose):\n"
+        "{ \"id\": \"<one of ALLOWED_IDS or 'no_match'>\", \"confidence\": <0..1>, \"rationale\": \"<=30 words\" }\n\n"
+
+        "USER_ANSWERS:\n" + json.dumps(req.answers, indent=2) + "\n\n"
+        "ALLOWED_IDS:\n" + json.dumps(allowed_ids, indent=2) + "\n"
     )
+
+
+# TODO: insert deterministic shortcuts here (e.g., Responsible Supporter) before building prompt
+
 
     # 4) Call OpenAI and force JSON output
     try:
@@ -375,36 +357,56 @@ def persona_classify(req: PersonaRequest):
         )
         text = (reply.choices[0].message.content or "").strip()
 
-        # Parse JSON; if parsing fails, return the first part of raw output for debugging
+        # Parse JSON (LLM guaranteed JSON mode, but we still guard)
         try:
             result = json.loads(text)
         except Exception as e:
             return {
                 "persona": {"id": "Error"},
-                "meta": {
-                    "id": "Error",
-                    "confidence": 0,
-                    "rationale": f"parse fail: {e}; raw starts: {text[:120]}"
-                }
+                "meta": {"id": "Error", "confidence": 0, "rationale": f"parse fail: {e}; raw starts: {text[:120]}"}
             }
 
+        # 5) Server-side validations & corrections
         persona_id = result.get("id") or "Unknown"
+        try:
+            confidence = float(result.get("confidence", 0))
+        except Exception:
+            confidence = 0.0
         rationale = result.get("rationale") or "No rationale provided"
-        confidence = result.get("confidence", 0.5)
 
-        # 5) Return in the shape your frontend expects
+        # Clamp confidence to [0,1]
+        confidence = max(0.0, min(1.0, confidence))
+
+        # Guard A: id must be allowed or 'no_match'
+        if persona_id not in allowed_ids and persona_id != "no_match":
+            persona_id, confidence, rationale = "no_match", 0.0, "LLM returned an id not in catalog."
+
+        # Compute caregiving flags once for Guard B
+        careg = (str(req.answers.get("caregiving") or "")).lower()
+        has_parent = ("parent" in careg or "parents" in careg)
+        has_child  = ("child" in careg or "children" in careg)
+
+        # ... after Guard B ...
+        if persona_id == "Sandwich Generation Planner" and not (has_parent and has_child):
+            persona_id, confidence, rationale = "no_match", 0.0, "Sandwich requires both parent and child caregiving."
+
+        # Guard C: minimum confidence required
+        MIN_CONFIDENCE = 0.40
+        if confidence < MIN_CONFIDENCE:
+            persona_id, confidence, rationale = "no_match", 0.0, f"Confidence below {MIN_CONFIDENCE}."
+
+        # 6) Return in the shape your frontend expects
         return {
             "persona": {"id": persona_id},
             "meta": {"id": persona_id, "confidence": confidence, "rationale": rationale}
         }
 
     except Exception as e:
-        # API/network/auth issues
         return {
             "persona": {"id": "Error"},
             "meta": {"id": "Error", "confidence": 0, "rationale": f"AI classification failed: {e}"}
         }
-# --- end stub ---
+# --- end guarded block ---
 
 
    
