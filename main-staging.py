@@ -1,4 +1,4 @@
-import weaviate; print("✅ weaviate version:", weaviate.__version__)
+import weaviate 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from weaviate.classes.query import Filter
@@ -13,7 +13,7 @@ import time
 import logging
 import requests
 
-import json, os
+import json
 from pathlib import Path
 
 ACCESS_MAP_PATH = os.getenv("ACCESS_MAP_PATH", "access_map.json")
