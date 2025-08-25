@@ -284,10 +284,26 @@ class PersonaRequest(BaseModel):
 
 
 @app.post("/persona-classify")
+# --- persona-classify (staging) — FULL DROP-IN REPLACEMENT ---
+from typing import Dict
+from pydantic import BaseModel
+import requests
+import json
+import openai
+
+class PersonaRequest(BaseModel):
+    answers: Dict
+    personasUrl: str
+
+@app.post("/persona-classify")
 def persona_classify(req: PersonaRequest):
+    """
+    Classify a user's answers into the best persona using OpenAI,
+    then return the chosen persona id + rationale.
+    """
+    # 1) Load personas JSON from the provided URL
     try:
-        # 1. Load personas JSON from the provided URL
-        resp = requests.get(req.personasUrl, timeout=5)
+        resp = requests.get(req.personasUrl, timeout=8)
         resp.raise_for_status()
         personas = resp.json()
     except Exception as e:
@@ -296,43 +312,89 @@ def persona_classify(req: PersonaRequest):
             "meta": {"id": "Error", "confidence": 0, "rationale": f"Could not fetch personas: {e}"}
         }
 
-    # 2. Build a prompt for OpenAI
+    # 2) Build a compact catalog to keep the prompt small & reliable
+    catalog = []
+    if isinstance(personas, list):
+        for p in personas:
+            pid = p.get("id") or p.get("name") or p.get("title")
+            if not pid:
+                continue
+            catalog.append({
+                "id": pid,
+                "name": p.get("name") or pid,
+                "overview": p.get("overview", ""),
+                "keyCharacteristics": p.get("keyCharacteristics", []),
+                "primaryGoals": p.get("primaryGoals", [])
+            })
+    else:
+        # If your JSON is an object keyed by persona name
+        for key, p in (personas or {}).items():
+            pid = p.get("id") or p.get("name") or p.get("title") or key
+            catalog.append({
+                "id": pid,
+                "name": p.get("name") or pid,
+                "overview": p.get("overview", ""),
+                "keyCharacteristics": p.get("keyCharacteristics", []),
+                "primaryGoals": p.get("primaryGoals", [])
+            })
+
+    if not catalog:
+        return {
+            "persona": {"id": "Error"},
+            "meta": {"id": "Error", "confidence": 0, "rationale": "No personas found in JSON"}
+        }
+
+    # 3) Prompt for the classifier
     prompt = (
-        "You are an assistant that classifies a user's answers into the best matching persona.\n\n"
+        "You are an assistant that classifies a user's answers into the single best matching persona.\n"
+        "Choose exactly ONE persona id from the provided list and explain briefly why.\n\n"
         f"User answers:\n{json.dumps(req.answers, indent=2)}\n\n"
-        f"Persona options:\n{json.dumps(personas, indent=2)}\n\n"
-        "Return ONLY a JSON object with:\n"
-        "{ \"id\": <persona id>, \"confidence\": <0-1>, \"rationale\": <why this persona fits> }\n"
+        f"Persona options (subset):\n{json.dumps(catalog, indent=2)}\n\n"
+        "Return ONLY a JSON object with exactly these fields:\n"
+        '{ "id": "<persona id>", "confidence": <0..1>, "rationale": "<<=30 words>" }'
     )
 
+    # 4) Call OpenAI and force JSON output
     try:
         reply = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=500,
-            temperature=0
+            temperature=0,
+            response_format={"type": "json_object"}
         )
-        text = reply.choices[0].message.content.strip()
+        text = (reply.choices[0].message.content or "").strip()
 
-        # Try to parse JSON from the model
-        result = json.loads(text)
-        persona_id = result.get("id", "Unknown")
-        rationale = result.get("rationale", "No rationale provided")
+        # Parse JSON; if parsing fails, return the first part of raw output for debugging
+        try:
+            result = json.loads(text)
+        except Exception as e:
+            return {
+                "persona": {"id": "Error"},
+                "meta": {
+                    "id": "Error",
+                    "confidence": 0,
+                    "rationale": f"parse fail: {e}; raw starts: {text[:120]}"
+                }
+            }
+
+        persona_id = result.get("id") or "Unknown"
+        rationale = result.get("rationale") or "No rationale provided"
         confidence = result.get("confidence", 0.5)
 
+        # 5) Return in the shape your frontend expects
         return {
             "persona": {"id": persona_id},
             "meta": {"id": persona_id, "confidence": confidence, "rationale": rationale}
         }
 
     except Exception as e:
+        # API/network/auth issues
         return {
             "persona": {"id": "Error"},
             "meta": {"id": "Error", "confidence": 0, "rationale": f"AI classification failed: {e}"}
         }
-
 # --- end stub ---
-
    
 from fastapi.responses import JSONResponse
 
