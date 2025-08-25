@@ -237,10 +237,11 @@ async def get_faq(request: Request):
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=500,
-                temperature=0,
-                response_format={"type": "json_object"}  # <= added line
+                temperature=0
             )
-            text = reply.choices[0].message.content.strip()
+            answer_text = reply.choices[0].message.content.strip()
+            return {"response": answer_text}
+
         else:
             print("❌ No high-quality vector match. Returning fallback message.")
 
