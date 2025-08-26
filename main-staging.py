@@ -267,24 +267,24 @@ def persona_classify(req: PersonaRequest):
     Returns: {"persona":{"id":...}, "meta":{"id":..., "confidence":..., "rationale":...}}
     """
     # 1) Load personas JSON from the provided URL
-try;    
-    fetch_headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0 Safari/537.36 WhealthChat/1.0"
-        ),
-        "Accept": "application/json, text/plain, */*",
-    }
-    resp = requests.get(req.personasUrl, headers=fetch_headers, timeout=10)
-    resp.raise_for_status()
-    personas = resp.json()
-
+    try:
+        fetch_headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0 Safari/537.36 WhealthChat/1.0"
+            ),
+            "Accept": "application/json, text/plain, */*",
+        }
+        resp = requests.get(req.personasUrl, headers=fetch_headers, timeout=10)
+        resp.raise_for_status()
+        personas = resp.json()
     except Exception as e:
         return {
             "persona": {"id": "Error"},
             "meta": {"id": "Error", "confidence": 0, "rationale": f"Could not fetch personas: {e}"}
         }
+
 
     # 2) Build a compact catalog to keep the prompt stable
     catalog = []
