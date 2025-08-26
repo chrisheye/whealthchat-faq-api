@@ -277,6 +277,8 @@ def persona_classify(req: PersonaRequest):
             "Accept": "application/json, text/plain, */*",
         }
         resp = requests.get(req.personasUrl, headers=fetch_headers, timeout=10)
+        if resp.status_code >= 400:
+            print(f"[personas fetch] {resp.status_code} {resp.reason} — url={req.personasUrl} body_start={resp.text[:200]}")
         resp.raise_for_status()
         personas = resp.json()
     except Exception as e:
