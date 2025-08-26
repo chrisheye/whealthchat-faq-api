@@ -267,6 +267,7 @@ def persona_classify(req: PersonaRequest):
     Returns: {"persona":{"id":...}, "meta":{"id":..., "confidence":..., "rationale":...}}
     """
     # 1) Load personas JSON from the provided URL
+try;    
     fetch_headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
