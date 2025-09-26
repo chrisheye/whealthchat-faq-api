@@ -1,4 +1,4 @@
-import weaviate 
+import weaviate; print("✅ weaviate version:", weaviate.__version__)
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from weaviate.classes.query import Filter
@@ -11,9 +11,11 @@ import re
 from rapidfuzz import fuzz
 import time
 import logging
-import requests
+import asyncio
+from contextlib import suppress
 
-import json
+
+import json, os
 from pathlib import Path
 
 ACCESS_MAP_PATH = os.getenv("ACCESS_MAP_PATH", "access_map.json")
@@ -97,7 +99,7 @@ def sanitize_question_for_disallowed_brands(question: str, allowed_sources: list
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://whealthchat.ai", "https://staging.whealthchat.ai"],
+    allow_origins=["https://whealthchat.ai", "https://staging.whealthchat.ai", "https://horizons.whealthchat.ai", "https://pendleton.whealthchat.ai"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -118,6 +120,28 @@ openai.api_key = OPENAI_API_KEY
 collection = client.collections.get("FAQ")
 print("🔍 Available collections:", client.collections.list_all())
 
+# --- KEEP-ALIVE: keep Weaviate gRPC warm to avoid long first-query stalls -----
+KEEPALIVE_INTERVAL_SEC = 150  # 2.5 minutes; you can use 120–240
+
+async def _weaviate_keepalive_loop():
+    # small delay so the app and client finish starting
+    await asyncio.sleep(5)
+    while True:
+        try:
+            coll = client.collections.get("FAQ")
+            # cheap "are you there?" call
+            _ = coll.aggregate.over_all(total_count=True)
+            logging.info("Weaviate keep-alive: OK")
+        except Exception as e:
+            logging.warning(f"Weaviate keep-alive error: {e}")
+        await asyncio.sleep(KEEPALIVE_INTERVAL_SEC)
+
+@app.on_event("startup")
+async def _start_keepalive():
+    # fire-and-forget background task
+    with suppress(Exception):
+        asyncio.create_task(_weaviate_keepalive_loop())
+
 @app.get("/version")
 def version_check():
     return {"status": "Running", "message": "✅ CORS enabled version"}
@@ -126,6 +150,8 @@ def version_check():
 async def get_faq(request: Request):
     body = await request.json()
     raw_q = body.get("query", "").strip()
+    if raw_q.startswith("{"):
+        return {"response": "⚠️ Invalid query format. Please ask a plain language question."}
     requested_user = body.get("user", "").strip().lower()
     q_norm = normalize(raw_q)
     allowed = allowed_sources_for_request(request)
@@ -168,6 +194,7 @@ async def get_faq(request: Request):
 
     except Exception as e:
         print("Exact-match error:", e)
+
 
     try:
         user_filt = Filter.by_property("user").equal("both") | Filter.by_property("user").equal(requested_user)
@@ -219,6 +246,26 @@ async def get_faq(request: Request):
             combined = "\n\n---\n\n".join(blocks)
             # ... after you build `combined` from blocks, right before prompt:
             safe_q = sanitize_question_for_disallowed_brands(raw_q, allowed)
+
+            prompt = (
+                f"{SYSTEM_PROMPT}\n\n"
+                f"Question: {safe_q}\n\n"
+                f"Here are multiple answers and coaching tips from similar questions.\n\n"
+                f"1. Summarize the answers into one helpful response.\n"
+                f"2. Then write ONE Coaching Tip that is no more than 3 sentences long. It should be clear, supportive, and behaviorally insightful.\n"
+                f"3. 👉 Break all text into readable paragraphs of no more than 3 sentences each — especially the Coaching Tip.\n"
+                f"4. ❌ Do NOT include any links, downloads, or tools in the Coaching Tip. Those belong in the answer only.\n\n"
+                f"{combined}"
+            )
+
+            print("Sending prompt to OpenAI.")
+            reply = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=500,
+                temperature=0.5
+            )
+            return {"response": reply.choices[0].message.content.strip()}
         else:
             print("❌ No high-quality vector match. Returning fallback message.")
 
@@ -249,176 +296,6 @@ def count_faqs():
     except Exception as e:
         logger.exception("❌ Error counting FAQs")
         raise HTTPException(status_code=500, detail=str(e))
-
-# --- persona-classify (staging) — CLEAN BLOCK ---
-# --- persona-classify (staging) — GUARDED BLOCK ---
-from typing import Dict
-from pydantic import BaseModel
-
-class PersonaRequest(BaseModel):
-    answers: Dict
-    personasUrl: str
-
-@app.post("/persona-classify")
-def persona_classify(req: PersonaRequest):
-    """
-    Classify a user's answers into the best persona using OpenAI,
-    with strict prompt guardrails and server-side validations.
-    Returns: {"persona":{"id":...}, "meta":{"id":..., "confidence":..., "rationale":...}}
-    """
-    # 1) Load personas JSON from the provided URL
-    try:
-        fetch_headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0 Safari/537.36 WhealthChat/1.0"
-            ),
-            "Accept": "application/json, text/plain, */*",
-        }
-        resp = requests.get(req.personasUrl, headers=fetch_headers, timeout=10)
-        if resp.status_code >= 400:
-            print(f"[personas fetch] {resp.status_code} {resp.reason} — url={req.personasUrl} body_start={resp.text[:200]}")
-        resp.raise_for_status()
-        personas = resp.json()
-    except Exception as e:
-        return {
-            "persona": {"id": "Error"},
-            "meta": {"id": "Error", "confidence": 0, "rationale": f"Could not fetch personas: {e}"}
-        }
-
-
-    # 2) Build a compact catalog to keep the prompt stable
-    catalog = []
-    if isinstance(personas, list):
-        for p in personas:
-            pid = p.get("id") or p.get("name") or p.get("title")
-            if not pid:
-                continue
-            catalog.append({
-                "id": pid,
-                "name": p.get("name") or pid,
-                "overview": p.get("overview", ""),
-                "keyCharacteristics": p.get("keyCharacteristics", []),
-                "primaryGoals": p.get("primaryGoals", [])
-            })
-    else:
-        for key, p in (personas or {}).items():
-            pid = (p or {}).get("id") or (p or {}).get("name") or (p or {}).get("title") or key
-            catalog.append({
-                "id": pid,
-                "name": (p or {}).get("name") or pid,
-                "overview": (p or {}).get("overview", ""),
-                "keyCharacteristics": (p or {}).get("keyCharacteristics", []),
-                "primaryGoals": (p or {}).get("primaryGoals", [])
-            })
-
-    if not catalog:
-        return {
-            "persona": {"id": "Error"},
-            "meta": {"id": "Error", "confidence": 0, "rationale": "No personas found in JSON"}
-        }
-
-    # 3) Prompt with explicit field limits + rules (no invented fields)
-    allowed_ids = [p["id"] for p in catalog]
-    FIELDS_ALLOWED = [
-        "age","gender","marital_status","life_stage","health_status",
-        "caregiving","risk_tolerance","planning_horizon","decision_style",
-        "memory_status","life_event","primary_concerns"
-    ]
-
-    prompt = (
-        "You are PersonaClassifier. Pick EXACTLY ONE persona from ALLOWED_IDS using ONLY FIELDS_ALLOWED.\n"
-        "NEVER invent fields, ages, or personas.\n\n"
-
-        "HARD CONSTRAINTS:\n"
-        "- Use ONLY these user fields: " + ", ".join(FIELDS_ALLOWED) + ".\n"
-        "- Do NOT infer children unless the user's 'caregiving' TEXT explicitly contains 'child' or 'children'.\n"
-        "- 'Sandwich Generation Planner' REQUIRES BOTH: 'parent'/'parents' AND 'child'/'children' in caregiving text.\n"
-        "- If age is provided and clearly conflicts with a persona’s typical profile, down-rank that persona.\n"
-        "- Prefer 'Responsible Supporter' over 'Sandwich' when age is ~55–70 AND caregiving mentions parent(s) BUT NOT child/children.\n"
-        "- 'Empowered Widow' REQUIRES widowhood signals (e.g., 'widow', 'death of spouse').\n"
-        "- 'Business Owner Nearing Exit' REQUIRES business/exit/sale intent.\n"
-        "- 'Self-Directed Investor' aligns with high risk tolerance + research/analyze decision style.\n"
-        "- 'HENRY (High Earner, Not Rich Yet)' typically ~35–50 and working full-time; tax/earnings focus is a useful signal.\n"
-        "- If NO persona satisfies constraints, return id:'no_match'.\n\n"
-
-        "TIE-BREAKERS:\n"
-        "1) Highest coverage of explicit user fields. 2) Age proximity (if present). 3) Goals/concerns alignment.\n\n"
-
-        "OUTPUT STRICTLY AS JSON (no prose):\n"
-        "{ \"id\": \"<one of ALLOWED_IDS or 'no_match'>\", \"confidence\": <0..1>, \"rationale\": \"<=30 words\" }\n\n"
-
-        "USER_ANSWERS:\n" + json.dumps(req.answers, indent=2) + "\n\n"
-        "ALLOWED_IDS:\n" + json.dumps(allowed_ids, indent=2) + "\n"
-    )
-
-
-# TODO: insert deterministic shortcuts here (e.g., Responsible Supporter) before building prompt
-
-
-    # 4) Call OpenAI and force JSON output
-    try:
-        reply = openai.ChatCompletion.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=500,
-            temperature=0,
-            response_format={"type": "json_object"}
-        )
-        text = (reply.choices[0].message.content or "").strip()
-
-        # Parse JSON (LLM guaranteed JSON mode, but we still guard)
-        try:
-            result = json.loads(text)
-        except Exception as e:
-            return {
-                "persona": {"id": "Error"},
-                "meta": {"id": "Error", "confidence": 0, "rationale": f"parse fail: {e}; raw starts: {text[:120]}"}
-            }
-
-        # 5) Server-side validations & corrections
-        persona_id = result.get("id") or "Unknown"
-        try:
-            confidence = float(result.get("confidence", 0))
-        except Exception:
-            confidence = 0.0
-        rationale = result.get("rationale") or "No rationale provided"
-
-        # Clamp confidence to [0,1]
-        confidence = max(0.0, min(1.0, confidence))
-
-        # Guard A: id must be allowed or 'no_match'
-        if persona_id not in allowed_ids and persona_id != "no_match":
-            persona_id, confidence, rationale = "no_match", 0.0, "LLM returned an id not in catalog."
-
-        # Compute caregiving flags once for Guard B
-        careg = (str(req.answers.get("caregiving") or "")).lower()
-        has_parent = ("parent" in careg or "parents" in careg)
-        has_child  = ("child" in careg or "children" in careg)
-
-        # ... after Guard B ...
-        if persona_id == "Sandwich Generation Planner" and not (has_parent and has_child):
-            persona_id, confidence, rationale = "no_match", 0.0, "Sandwich requires both parent and child caregiving."
-
-        # Guard C: minimum confidence required
-        MIN_CONFIDENCE = 0.40
-        if confidence < MIN_CONFIDENCE:
-            persona_id, confidence, rationale = "no_match", 0.0, f"Confidence below {MIN_CONFIDENCE}."
-
-        # 6) Return in the shape your frontend expects
-        return {
-            "persona": {"id": persona_id},
-            "meta": {"id": persona_id, "confidence": confidence, "rationale": rationale}
-        }
-
-    except Exception as e:
-        return {
-            "persona": {"id": "Error"},
-            "meta": {"id": "Error", "confidence": 0, "rationale": f"AI classification failed: {e}"}
-        }
-# --- end guarded block ---
-
 
    
 from fastapi.responses import JSONResponse
