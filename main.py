@@ -170,7 +170,11 @@ async def get_faq(request: Request):
         user_filt = Filter.by_property("user").equal("both") | Filter.by_property("user").equal(requested_user)
         combined_filt = and_filters(user_filt, tenant_filt)
 
-        filter = Filter.by_property("question").equal(raw_q.strip())
+        filter = and_filters(
+            Filter.by_property("question").equal(raw_q.strip()),
+            tenant_filt  # ← keeps results to the allowed sources only
+)
+
 
         print("🔎 exact-match allowed_sources:", allowed)
 
