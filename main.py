@@ -182,6 +182,10 @@ async def get_faq(request: Request):
         print("📦 exact sources:", [o.properties.get("source") for o in exact_res.objects])
 
         for obj in exact_res.objects:
+            src = (obj.properties.get("source") or "").strip()
+            if src not in allowed:
+                print("⛔ blocked exact-match source:", src, "allowed:", allowed)
+                continue
             print("✅ Exact match confirmed.")
             return {"response": format_response(obj)}
 
