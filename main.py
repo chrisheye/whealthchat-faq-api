@@ -237,7 +237,7 @@ async def get_faq(request: Request):
             distance = getattr(obj.metadata, "distance", '?')
             print(f"{i+1}. {obj.properties.get('question', '')} (distance: {distance})")
 
-        if unique_faqs and getattr(unique_faqs[0].metadata, "distance", 1.0) <= 0.6:
+        if unique_faqs and getattr(unique_faqs[0].metadata, "distance", 1.0) <= 0.75:
             blocks = []
             for i, obj in enumerate(unique_faqs):
                 answer = obj.properties.get("answer", "").strip()
