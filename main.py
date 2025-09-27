@@ -156,6 +156,7 @@ async def get_faq(request: Request):
     q_norm = normalize(raw_q)
     allowed = allowed_sources_for_request(request)
     tenant_filt = source_filter(allowed)
+    print("🎯 Allowed sources for this tenant:", allowed)
 
     if not raw_q:
         raise HTTPException(status_code=400, detail="Missing 'query' in request body.")
