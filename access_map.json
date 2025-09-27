@@ -1,7 +1,5 @@
 {
-  "public": ["public"],
+  "public": ["whealthchat", "general"],
   "pendleton": ["pendleton"],
-  "tiaa": ["tiaa"],
-  "horizons": ["horizons"],   <-- add this
-  "both": ["pendleton", "tiaa", "horizons"]
+  "horizons": ["horizons"]
 }
