@@ -165,8 +165,13 @@ async def get_faq(request: Request):
             limit=1
         )
         if pre_exact.objects:
-            print("✅ Pre-exact match hit:", pre_exact.objects[0].properties)
-            return {"response": format_response(pre_exact.objects[0])}
+            obj = pre_exact.objects[0]
+            src = (obj.properties.get("source") or "").strip()
+            if src not in allowed:
+                print("⛔ pre-exact source blocked:", src, "allowed:", allowed)
+            else:
+                print("✅ Pre-exact match hit:", obj.properties)
+                return {"response": format_response(obj)}
     except Exception as e:
         print("Pre-exact error:", e)
 
