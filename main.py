@@ -222,6 +222,8 @@ async def get_faq(request: Request):
             return_properties=["question", "answer", "coachingTip", "user", "source"],  # include source for debugging
             limit=3
         )
+        print("🛠 Vector filters combined:", combined_filt)
+
         objects = vec_res.objects
         print("📦 vector sources:", [o.properties.get("source") for o in objects])
         print(f"🔍 Retrieved {len(objects)} vector matches:")
