@@ -25,6 +25,7 @@ with open(Path(ACCESS_MAP_PATH), "r", encoding="utf-8") as f:
 def allowed_sources_for_request(request):
     tenant = request.headers.get("X-Tenant") or request.query_params.get("tenant") or "public"
     allowed = ACCESS_MAP.get(tenant, ACCESS_MAP["public"])
+    # ✅ Make the global source always allowed
     if "WhealthChat" not in allowed:
         allowed = allowed + ["WhealthChat"]
     return allowed
@@ -183,23 +184,16 @@ async def get_faq(request: Request):
         )
         print("📦 exact sources:", [o.properties.get("source") for o in exact_res.objects])
 
-        candidates = []
         for obj in exact_res.objects:
             db_q = obj.properties.get("question", "").strip()
             db_q_norm = normalize(db_q)
-            src = (obj.properties.get("source") or "").strip()
-            usr = (obj.properties.get("user") or "").lower()
-
             if db_q_norm == q_norm:
-                if src in allowed and usr in [requested_user, "both"]:
-                    candidates.append(obj)
-                else:
-                    print("⛔ blocked exact-match:", {"q": db_q, "src": src, "user": usr})
-
-        if candidates:
-            print("✅ Exact match confirmed.")
-            return {"response": format_response(candidates[0])}
-
+                src = (obj.properties.get("source") or "").strip()
+                if src not in allowed:
+                    print("⛔ blocked exact-match source:", src, "allowed:", allowed)
+                    continue
+                print("✅ Exact match confirmed.")
+                return {"response": format_response(obj)}
 
         print("⚠️ No strict match. Proceeding to vector search.")
 
