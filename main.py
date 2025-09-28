@@ -158,28 +158,29 @@ async def get_faq(request: Request):
     tenant_filt = source_filter(allowed)
     print("🎯 Allowed sources for this tenant:", allowed)
 
-    # --- Pre-exact match (respect source filter, ignore user) ---
+    # --- Pre-exact match (fetch by question only, filter source+user in Python) ---
     try:
         pre_exact = collection.query.fetch_objects(
-            filters=Filter.all_of([
-                Filter.by_property("question").equal(raw_q.strip()),
-                tenant_filt  # ✅ enforce allowed sources
-            ]),
+            filters=Filter.by_property("question").equal(raw_q.strip()),
             return_properties=["question", "answer", "coachingTip", "source", "user"],
-            limit=1
+            limit=5  # fetch a few in case multiple tenants/users have same question
         )
         if pre_exact.objects:
-            obj = pre_exact.objects[0]
-            src = (obj.properties.get("source") or "").strip()
-            print("✅ Pre-exact match hit:", obj.properties, "| allowed:", allowed)
-            if src in allowed:
-                return {"response": format_response(obj)}
-            else:
-                print("⛔ pre-exact source blocked:", src, "allowed:", allowed)
+            for obj in pre_exact.objects:
+                src = (obj.properties.get("source") or "").strip()
+                usr = (obj.properties.get("user") or "").strip().lower()
+
+                print("🔎 Pre-exact candidate:", obj.properties, 
+                      "| allowed:", allowed, "| requested_user:", requested_user)
+
+                # Python-side filtering (instead of Weaviate)
+                if src in allowed and usr in [requested_user, "both"]:
+                    print("✅ Pre-exact match confirmed.")
+                    return {"response": format_response(obj)}
+
+            print("⛔ No pre-exact matches survived source/user filtering.")
     except Exception as e:
         print("Pre-exact error:", e)
-
-
 
     if not raw_q:
         raise HTTPException(status_code=400, detail="Missing 'query' in request body.")
