@@ -170,15 +170,16 @@ async def get_faq(request: Request):
                 src = (obj.properties.get("source") or "").strip()
                 usr = (obj.properties.get("user") or "").strip().lower()
 
-                print("🔎 Pre-exact candidate:", obj.properties, 
+                print("🔎 Pre-exact candidate:", obj.properties,
                       "| allowed:", allowed, "| requested_user:", requested_user)
 
-                # Python-side filtering (instead of Weaviate)
-                if src in allowed and usr in [requested_user, "both"]:
+                # ✅ Allow global source OR tenant-allowed source
+                if (src == "WhealthChat" or src in allowed) and usr in [requested_user, "both"]:
                     print("✅ Pre-exact match confirmed.")
                     return {"response": format_response(obj)}
 
             print("⛔ No pre-exact matches survived source/user filtering.")
+
     except Exception as e:
         print("Pre-exact error:", e)
 
