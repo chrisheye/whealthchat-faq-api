@@ -231,8 +231,7 @@ async def get_faq(request: Request):
         unique_faqs = []
         questions_seen = []
         for obj in objects:
-        
-        print("🔎 candidate source/user:", (obj.properties.get("source"), obj.properties.get("user")))
+            print("🔎 candidate source/user:", (obj.properties.get("source"), obj.properties.get("user")))
 
             src = (obj.properties.get("source") or "").strip()
             if src not in allowed:
@@ -246,6 +245,7 @@ async def get_faq(request: Request):
             if not is_duplicate:
                 unique_faqs.append(obj)
                 questions_seen.append(q_text)
+
 
         print("🧾 used sources/questions:", [
         (o.properties.get("source"), o.properties.get("question")) for o in unique_faqs
