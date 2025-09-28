@@ -24,7 +24,11 @@ with open(Path(ACCESS_MAP_PATH), "r", encoding="utf-8") as f:
 
 def allowed_sources_for_request(request):
     tenant = request.headers.get("X-Tenant") or request.query_params.get("tenant") or "public"
-    return ACCESS_MAP.get(tenant, ACCESS_MAP["public"])
+    allowed = ACCESS_MAP.get(tenant, ACCESS_MAP["public"])
+    if "WhealthChat" not in allowed:
+        allowed = allowed + ["WhealthChat"]
+    return allowed
+
 
 def source_filter(allowed_sources: list[str]):
     return Filter.by_property("source").contains_any(allowed_sources)
