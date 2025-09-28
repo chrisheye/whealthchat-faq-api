@@ -157,6 +157,18 @@ async def get_faq(request: Request):
     allowed = allowed_sources_for_request(request)
     tenant_filt = source_filter(allowed)
     print("🎯 Allowed sources for this tenant:", allowed)
+    # --- Pre-exact match (ignore user and source filters) ---
+try:
+    pre_exact = collection.query.fetch_objects(
+        filters=Filter.by_property("question").equal(raw_q.strip()),
+        return_properties=["question", "answer", "coachingTip", "source", "user"],
+        limit=1
+    )
+    if pre_exact.objects:
+        print("✅ Pre-exact match hit:", pre_exact.objects[0].properties)
+        return {"response": format_response(pre_exact.objects[0])}
+except Exception as e:
+    print("Pre-exact error:", e)
 
     if not raw_q:
         raise HTTPException(status_code=400, detail="Missing 'query' in request body.")
