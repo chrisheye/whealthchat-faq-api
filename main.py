@@ -184,16 +184,23 @@ async def get_faq(request: Request):
         )
         print("📦 exact sources:", [o.properties.get("source") for o in exact_res.objects])
 
+        candidates = []
         for obj in exact_res.objects:
             db_q = obj.properties.get("question", "").strip()
             db_q_norm = normalize(db_q)
+            src = (obj.properties.get("source") or "").strip()
+            usr = (obj.properties.get("user") or "").lower()
+
             if db_q_norm == q_norm:
-                src = (obj.properties.get("source") or "").strip()
-                if src not in allowed:
-                    print("⛔ blocked exact-match source:", src, "allowed:", allowed)
-                    continue
-                print("✅ Exact match confirmed.")
-                return {"response": format_response(obj)}
+                if src in allowed and usr in [requested_user, "both"]:
+                    candidates.append(obj)
+                else:
+                    print("⛔ blocked exact-match:", {"q": db_q, "src": src, "user": usr})
+
+        if candidates:
+            print("✅ Exact match confirmed.")
+            return {"response": format_response(candidates[0])}
+
 
         print("⚠️ No strict match. Proceeding to vector search.")
 
