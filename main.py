@@ -231,6 +231,9 @@ async def get_faq(request: Request):
         unique_faqs = []
         questions_seen = []
         for obj in objects:
+        
+        print("🔎 candidate source/user:", (obj.properties.get("source"), obj.properties.get("user")))
+
             src = (obj.properties.get("source") or "").strip()
             if src not in allowed:
                 print("⛔ blocked vector source:", src, "allowed:", allowed)
