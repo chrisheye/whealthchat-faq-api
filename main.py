@@ -24,7 +24,12 @@ with open(Path(ACCESS_MAP_PATH), "r", encoding="utf-8") as f:
 
 def allowed_sources_for_request(request):
     tenant = request.headers.get("X-Tenant") or request.query_params.get("tenant") or "public"
-    return ACCESS_MAP.get(tenant, ACCESS_MAP["public"])
+    allowed = ACCESS_MAP.get(tenant, ACCESS_MAP["public"])
+    # ✅ Make the global source always allowed
+    if "WhealthChat" not in allowed:
+        allowed = allowed + ["WhealthChat"]
+    return allowed
+
 
 def source_filter(allowed_sources: list[str]):
     return Filter.by_property("source").contains_any(allowed_sources)
@@ -156,32 +161,6 @@ async def get_faq(request: Request):
     q_norm = normalize(raw_q)
     allowed = allowed_sources_for_request(request)
     tenant_filt = source_filter(allowed)
-    print("🎯 Allowed sources for this tenant:", allowed)
-
-    # --- Pre-exact match (fetch by question only, filter source+user in Python) ---
-    try:
-        pre_exact = collection.query.fetch_objects(
-            filters=Filter.by_property("question").equal(raw_q.strip()),
-            return_properties=["question", "answer", "coachingTip", "source", "user"],
-            limit=5  # fetch a few in case multiple tenants/users have same question
-        )
-        if pre_exact.objects:
-            for obj in pre_exact.objects:
-                src = (obj.properties.get("source") or "").strip()
-                usr = (obj.properties.get("user") or "").strip().lower()
-
-                print("🔎 Pre-exact candidate:", obj.properties,
-                      "| allowed:", allowed, "| requested_user:", requested_user)
-
-                # ✅ Allow global source OR tenant-allowed source
-                if (src == "WhealthChat" or src in allowed) and usr in [requested_user, "both"]:
-                    print("✅ Pre-exact match confirmed.")
-                    return {"response": format_response(obj)}
-
-            print("⛔ No pre-exact matches survived source/user filtering.")
-
-    except Exception as e:
-        print("Pre-exact error:", e)
 
     if not raw_q:
         raise HTTPException(status_code=400, detail="Missing 'query' in request body.")
@@ -195,12 +174,7 @@ async def get_faq(request: Request):
         user_filt = Filter.by_property("user").equal("both") | Filter.by_property("user").equal(requested_user)
         combined_filt = and_filters(user_filt, tenant_filt)
 
-        filter = and_filters(
-            Filter.by_property("question").equal(raw_q.strip()),
-            tenant_filt  # ← keeps results to the allowed sources only
-)
-
-
+        filter = Filter.by_property("question").equal(raw_q.strip()) & combined_filt
         print("🔎 exact-match allowed_sources:", allowed)
 
         exact_res = collection.query.fetch_objects(
@@ -211,12 +185,15 @@ async def get_faq(request: Request):
         print("📦 exact sources:", [o.properties.get("source") for o in exact_res.objects])
 
         for obj in exact_res.objects:
-            src = (obj.properties.get("source") or "").strip()
-            if src not in allowed:
-                print("⛔ blocked exact-match source:", src, "allowed:", allowed)
-                continue
-            print("✅ Exact match confirmed.")
-            return {"response": format_response(obj)}
+            db_q = obj.properties.get("question", "").strip()
+            db_q_norm = normalize(db_q)
+            if db_q_norm == q_norm:
+                src = (obj.properties.get("source") or "").strip()
+                if src not in allowed:
+                    print("⛔ blocked exact-match source:", src, "allowed:", allowed)
+                    continue
+                print("✅ Exact match confirmed.")
+                return {"response": format_response(obj)}
 
         print("⚠️ No strict match. Proceeding to vector search.")
 
@@ -235,8 +212,6 @@ async def get_faq(request: Request):
             return_properties=["question", "answer", "coachingTip", "user", "source"],  # include source for debugging
             limit=3
         )
-        print("🛠 Vector filters combined:", combined_filt)
-
         objects = vec_res.objects
         print("📦 vector sources:", [o.properties.get("source") for o in objects])
         print(f"🔍 Retrieved {len(objects)} vector matches:")
@@ -244,12 +219,6 @@ async def get_faq(request: Request):
         unique_faqs = []
         questions_seen = []
         for obj in objects:
-            print(
-            "🔎 candidate source/user:", 
-            (obj.properties.get("source"), obj.properties.get("user")), 
-            "| allowed:", allowed,
-            "| requested_user:", requested_user)
-
             src = (obj.properties.get("source") or "").strip()
             if src not in allowed:
                 print("⛔ blocked vector source:", src, "allowed:", allowed)
@@ -263,7 +232,6 @@ async def get_faq(request: Request):
                 unique_faqs.append(obj)
                 questions_seen.append(q_text)
 
-
         print("🧾 used sources/questions:", [
         (o.properties.get("source"), o.properties.get("question")) for o in unique_faqs
         ])
@@ -274,7 +242,7 @@ async def get_faq(request: Request):
             distance = getattr(obj.metadata, "distance", '?')
             print(f"{i+1}. {obj.properties.get('question', '')} (distance: {distance})")
 
-        if unique_faqs and getattr(unique_faqs[0].metadata, "distance", 1.0) <= 0.75:
+        if unique_faqs and getattr(unique_faqs[0].metadata, "distance", 1.0) <= 0.6:
             blocks = []
             for i, obj in enumerate(unique_faqs):
                 answer = obj.properties.get("answer", "").strip()
