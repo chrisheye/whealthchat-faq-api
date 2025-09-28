@@ -158,18 +158,27 @@ async def get_faq(request: Request):
     tenant_filt = source_filter(allowed)
     print("🎯 Allowed sources for this tenant:", allowed)
 
-    # --- Pre-exact match (bulletproof, no source or user filters) ---
+    # --- Pre-exact match (respect source filter, ignore user) ---
     try:
         pre_exact = collection.query.fetch_objects(
-            filters=Filter.by_property("question").equal(raw_q.strip()),
+            filters=Filter.all_of([
+                Filter.by_property("question").equal(raw_q.strip()),
+                tenant_filt  # ✅ enforce allowed sources
+            ]),
             return_properties=["question", "answer", "coachingTip", "source", "user"],
             limit=1
         )
         if pre_exact.objects:
-            print("✅ Pre-exact match hit:", pre_exact.objects[0].properties)
-            return {"response": format_response(pre_exact.objects[0])}
+            obj = pre_exact.objects[0]
+            src = (obj.properties.get("source") or "").strip()
+            print("✅ Pre-exact match hit:", obj.properties, "| allowed:", allowed)
+            if src in allowed:
+                return {"response": format_response(obj)}
+            else:
+                print("⛔ pre-exact source blocked:", src, "allowed:", allowed)
     except Exception as e:
         print("Pre-exact error:", e)
+
 
 
     if not raw_q:
