@@ -233,7 +233,11 @@ async def get_faq(request: Request):
         unique_faqs = []
         questions_seen = []
         for obj in objects:
-            print("🔎 candidate source/user:", (obj.properties.get("source"), obj.properties.get("user")))
+            print(
+            "🔎 candidate source/user:", 
+            (obj.properties.get("source"), obj.properties.get("user")), 
+            "| allowed:", allowed,
+            "| requested_user:", requested_user)
 
             src = (obj.properties.get("source") or "").strip()
             if src not in allowed:
