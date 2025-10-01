@@ -1,5 +1,6 @@
 {
   "public": ["whealthchat", "general"],
   "pendleton": ["pendleton"],
+  "demo": ["demo"],
   "horizons": ["horizons"]
 }
