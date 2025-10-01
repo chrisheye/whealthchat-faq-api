@@ -2,5 +2,6 @@
   "public": ["whealthchat", "general"],
   "pendleton": ["pendleton"],
   "demo": ["demo"],
+  "staging": ["staging"],
   "horizons": ["horizons"]
 }
