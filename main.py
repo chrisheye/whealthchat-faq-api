@@ -104,7 +104,7 @@ def sanitize_question_for_disallowed_brands(question: str, allowed_sources: list
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://whealthchat.ai", "https://staging.whealthchat.ai", "https://horizons.whealthchat.ai", "https://pendleton.whealthchat.ai"],
+    allow_origins=["https://whealthchat.ai", "https://staging.whealthchat.ai", "https://horizons.whealthchat.ai", "https://demo.whealthchat.ai","https://demo1.whealthchat.ai","https://pendleton.whealthchat.ai"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -309,3 +309,4 @@ from fastapi.responses import JSONResponse
 @app.head("/", include_in_schema=False)
 def root():
     return JSONResponse({"status": "WhealthChat API is running"})
+
