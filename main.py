@@ -237,14 +237,45 @@ async def get_faq(request: Request):
         ])
 
         print(f"🫹 After filtering and deduplication: {len(unique_faqs)} match(es) kept.")
+# ----- RANKING RULES -----
+        allowed_lower = {s.lower() for s in allowed}
+
+        def is_trust_topic(text: str) -> bool:
+            return re.search(r"\btrust\s+(administration|adminstration|services?|company|companies|trustee|department|types?)\b",
+                             text, re.IGNORECASE) is not None
+
+        ranked = []
+        for obj in unique_faqs:
+            src = (obj.properties.get("source") or "").strip()
+            usr = (obj.properties.get("user") or "").strip().lower()
+            qtxt = (obj.properties.get("question") or "").strip()
+            dist = getattr(obj.metadata, "distance", 1.0)
+            score = 1.0 - float(dist)
+
+            # Bonus: tenant-specific sources outrank global
+            if src.lower() in allowed_lower and src.lower() != "whealthchat":
+                score += 0.12
+
+            # Penalty: trust topics for non-trust tenants
+            if is_trust_topic(qtxt) and "pendleton" not in allowed_lower:
+                score -= 0.25
+
+            ranked.append((score, obj))
+
+        ranked.sort(key=lambda t: t[0], reverse=True)
+        RANK_SCORE_MIN = 0.45
+        top = [obj for sc, obj in ranked if sc >= RANK_SCORE_MIN][:3]
+        print(f"📊 After ranking: {len(top)} kept above threshold {RANK_SCORE_MIN}")
+# --------------------------
 
         for i, obj in enumerate(unique_faqs):
             distance = getattr(obj.metadata, "distance", '?')
             print(f"{i+1}. {obj.properties.get('question', '')} (distance: {distance})")
 
-        if unique_faqs and getattr(unique_faqs[0].metadata, "distance", 1.0) <= 0.6:
+        if top:
             blocks = []
-            for i, obj in enumerate(unique_faqs):
+            for i, obj in enumerate(top):
+
                 answer = obj.properties.get("answer", "").strip()
                 coaching = obj.properties.get("coachingTip", "").strip()
                 blocks.append(f"Answer {i+1}:\n{answer}\n\nCoaching Tip {i+1}: {coaching}")
@@ -309,4 +340,3 @@ from fastapi.responses import JSONResponse
 @app.head("/", include_in_schema=False)
 def root():
     return JSONResponse({"status": "WhealthChat API is running"})
-
