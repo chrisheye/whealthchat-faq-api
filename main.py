@@ -160,6 +160,7 @@ async def get_faq(request: Request):
     requested_user = body.get("user", "").strip().lower()
     q_norm = normalize(raw_q)
     allowed = allowed_sources_for_request(request)
+    allowed_lower = {s.lower() for s in allowed}
     tenant_filt = source_filter(allowed)
 
     if not raw_q:
@@ -188,8 +189,9 @@ async def get_faq(request: Request):
             db_q = obj.properties.get("question", "").strip()
             db_q_norm = normalize(db_q)
             if db_q_norm == q_norm:
-                src = (obj.properties.get("source") or "").strip()
-                if src not in allowed:
+                src = (obj.properties.get("source") or "").strip().lower()
+                if src not in allowed_lower:
+
                     print("⛔ blocked exact-match source:", src, "allowed:", allowed)
                     continue
                 print("✅ Exact match confirmed.")
