@@ -213,6 +213,17 @@ async def get_faq(request: Request):
             limit=3
         )
         objects = vec_res.objects
+        
+        # 🔒 Exact-match override (case/punctuation tolerant)
+        for obj in objects:
+            db_q = (obj.properties.get("question") or "").strip()
+            if normalize(db_q) == q_norm:
+                src_ok = ((obj.properties.get("source") or "").strip() in allowed)
+                user_ok = (obj.properties.get("user","").lower() in [requested_user, "both"])
+                if src_ok and user_ok:
+                    print("✅ Exact-match override via vector results.")
+                    return {"response": format_response(obj)}
+
         print("📦 vector sources:", [o.properties.get("source") for o in objects])
         print(f"🔍 Retrieved {len(objects)} vector matches:")
 
