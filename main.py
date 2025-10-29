@@ -304,9 +304,24 @@ async def get_faq(request: Request):
             combined = "\n\n---\n\n".join(blocks)
             # ... after you build `combined` from blocks, right before prompt:
             safe_q = sanitize_question_for_disallowed_brands(raw_q, allowed)
+                
+            # Voice guard: if top sources are global-only, require neutral third-person (no "we/our")
+            top_sources = { (obj.properties.get("source") or "").strip().lower() for obj in top }
+            allowed_lower = { s.lower() for s in allowed }
+            tenant_sources = { s for s in allowed_lower if s != "whealthchat" }
+            global_only = ("whealthchat" in top_sources) and not (top_sources & tenant_sources)
+
+            voice_note = ""
+            if global_only:
+                voice_note = (
+            "IMPORTANT STYLE RULE: Answer in a neutral third-person voice. "
+            "Do NOT use 'we'/'our' or imply the assistant represents any specific firm. "
+            "Provide general, educational information only."
+            )
 
             prompt = (
                 f"{SYSTEM_PROMPT}\n\n"
+                f"{voice_note}\n\n"
                 f"Question: {safe_q}\n\n"
                 f"Here are multiple answers and coaching tips from similar questions.\n\n"
                 f"1. Summarize the answers into one helpful response.\n"
