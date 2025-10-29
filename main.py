@@ -180,7 +180,7 @@ async def get_faq(request: Request):
         exact_res = collection.query.fetch_objects(
             filters=filter,
             return_properties=["question", "answer", "coachingTip", "source"],  # add source
-            limit=3
+            limit=12
         )
         print("📦 exact sources:", [o.properties.get("source") for o in exact_res.objects])
 
@@ -275,9 +275,9 @@ async def get_faq(request: Request):
             if src.lower() in allowed_lower and src.lower() != "whealthchat":
                 score += 0.12
 
-            # 🧠 Generic brand-specific guardrail
-            if is_brand_specific_question(raw_q) and is_institutional_voice(answer_text):
-                score -= 0.15
+            # 🧠 Generic brand-specific guardrail (apply only to global content)
+            if src.lower() == "whealthchat" and is_brand_specific_question(raw_q) and is_institutional_voice(answer_text):
+                score -= 0.5
 
             ranked.append((score, obj))
 
