@@ -24,7 +24,12 @@ with open(Path(ACCESS_MAP_PATH), "r", encoding="utf-8") as f:
 
 def allowed_sources_for_request(request):
     tenant = request.headers.get("X-Tenant") or request.query_params.get("tenant") or "public"
-    return ACCESS_MAP.get(tenant, ACCESS_MAP["public"])
+    allowed = ACCESS_MAP.get(tenant, ACCESS_MAP["public"])
+    # ✅ Make the global source always allowed
+    if "WhealthChat" not in allowed:
+        allowed = allowed + ["WhealthChat"]
+    return allowed
+
 
 def source_filter(allowed_sources: list[str]):
     return Filter.by_property("source").contains_any(allowed_sources)
@@ -99,7 +104,7 @@ def sanitize_question_for_disallowed_brands(question: str, allowed_sources: list
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://whealthchat.ai", "https://staging.whealthchat.ai", "https://horizons.whealthchat.ai", "https://pendleton.whealthchat.ai"],
+    allow_origins=["https://whealthchat.ai", "https://staging.whealthchat.ai", "https://horizons.whealthchat.ai", "https://demo.whealthchat.ai","https://demo1.whealthchat.ai","https://pendleton.whealthchat.ai"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -155,6 +160,7 @@ async def get_faq(request: Request):
     requested_user = body.get("user", "").strip().lower()
     q_norm = normalize(raw_q)
     allowed = allowed_sources_for_request(request)
+    allowed_lower = {s.lower() for s in allowed}
     tenant_filt = source_filter(allowed)
 
     if not raw_q:
@@ -175,7 +181,7 @@ async def get_faq(request: Request):
         exact_res = collection.query.fetch_objects(
             filters=filter,
             return_properties=["question", "answer", "coachingTip", "source"],  # add source
-            limit=3
+            limit=12
         )
         print("📦 exact sources:", [o.properties.get("source") for o in exact_res.objects])
 
@@ -183,8 +189,9 @@ async def get_faq(request: Request):
             db_q = obj.properties.get("question", "").strip()
             db_q_norm = normalize(db_q)
             if db_q_norm == q_norm:
-                src = (obj.properties.get("source") or "").strip()
-                if src not in allowed:
+                src = (obj.properties.get("source") or "").strip().lower()
+                if src not in allowed_lower:
+
                     print("⛔ blocked exact-match source:", src, "allowed:", allowed)
                     continue
                 print("✅ Exact match confirmed.")
@@ -208,6 +215,17 @@ async def get_faq(request: Request):
             limit=3
         )
         objects = vec_res.objects
+        
+        # 🔒 Exact-match override (case/punctuation tolerant)
+        for obj in objects:
+            db_q = (obj.properties.get("question") or "").strip()
+            if normalize(db_q) == q_norm:
+                src_ok = ((obj.properties.get("source") or "").strip() in allowed)
+                user_ok = (obj.properties.get("user","").lower() in [requested_user, "both"])
+                if src_ok and user_ok:
+                    print("✅ Exact-match override via vector results.")
+                    return {"response": format_response(obj)}
+
         print("📦 vector sources:", [o.properties.get("source") for o in objects])
         print(f"🔍 Retrieved {len(objects)} vector matches:")
 
@@ -232,14 +250,54 @@ async def get_faq(request: Request):
         ])
 
         print(f"🫹 After filtering and deduplication: {len(unique_faqs)} match(es) kept.")
+        
+        # ----- RANKING RULES -----
+        allowed_lower = {s.lower() for s in allowed}
+
+        def is_brand_specific_question(q: str) -> bool:
+            return re.search(r"\b(what are your|your|do you|can you|where are you|which do you|who are you)\b",
+                             q, re.IGNORECASE) is not None
+
+        def is_institutional_voice(ans: str) -> bool:
+            # Heuristic for “we/our” voice that could impersonate a tenant
+            return re.search(r"\b(we|our|our team|we offer|we provide|our services|our clients)\b",
+                             ans, re.IGNORECASE) is not None
+
+        ranked = []
+        for obj in unique_faqs:
+            src = (obj.properties.get("source") or "").strip()
+            usr = (obj.properties.get("user") or "").strip().lower()
+            qtxt = (obj.properties.get("question") or "").strip()
+            dist = getattr(obj.metadata, "distance", 1.0)
+            score = 1.0 - float(dist)
+
+            answer_text = (obj.properties.get("answer") or "").strip()
+
+            # Bonus: tenant-specific sources outrank global
+            if src.lower() in allowed_lower and src.lower() != "whealthchat":
+                score += 0.12
+
+            # 🧠 Generic brand-specific guardrail (apply only to global content)
+            if src.lower() == "whealthchat" and is_brand_specific_question(raw_q) and is_institutional_voice(answer_text):
+                score -= 0.5
+
+            ranked.append((score, obj))
+
+
+        ranked.sort(key=lambda t: t[0], reverse=True)
+        RANK_SCORE_MIN = 0.40
+        top = [obj for sc, obj in ranked if sc >= RANK_SCORE_MIN][:3]
+        print(f"📊 After ranking: {len(top)} kept above threshold {RANK_SCORE_MIN}")
+        # --------------------------
 
         for i, obj in enumerate(unique_faqs):
             distance = getattr(obj.metadata, "distance", '?')
             print(f"{i+1}. {obj.properties.get('question', '')} (distance: {distance})")
 
-        if unique_faqs and getattr(unique_faqs[0].metadata, "distance", 1.0) <= 0.6:
+        if top:
             blocks = []
-            for i, obj in enumerate(unique_faqs):
+            for i, obj in enumerate(top):
+
                 answer = obj.properties.get("answer", "").strip()
                 coaching = obj.properties.get("coachingTip", "").strip()
                 blocks.append(f"Answer {i+1}:\n{answer}\n\nCoaching Tip {i+1}: {coaching}")
@@ -297,6 +355,179 @@ def count_faqs():
         logger.exception("❌ Error counting FAQs")
         raise HTTPException(status_code=500, detail=str(e))
 
+# --- persona-classify (staging) — CLEAN BLOCK ---
+# --- persona-classify (staging) — GUARDED BLOCK ---
+from typing import Dict
+from pydantic import BaseModel
+
+class PersonaRequest(BaseModel):
+    answers: Dict
+    personasUrl: str
+
+@app.post("/persona-classify")
+def persona_classify(req: PersonaRequest):
+    """
+    Classify a user's answers into the best persona using OpenAI,
+    with strict prompt guardrails and server-side validations.
+    Returns: {"persona":{"id":...}, "meta":{"id":..., "confidence":..., "rationale":...}}
+    """
+    # 1) Load personas JSON from the provided URL
+    try:
+        fetch_headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0 Safari/537.36 WhealthChat/1.0"
+            ),
+            "Accept": "application/json, text/plain, */*",
+        }
+        resp = requests.get(req.personasUrl, headers=fetch_headers, timeout=10)
+        if resp.status_code >= 400:
+            print(f"[personas fetch] {resp.status_code} {resp.reason} — url={req.personasUrl} body_start={resp.text[:200]}")
+        resp.raise_for_status()
+        personas = resp.json()
+    except Exception as e:
+        return {
+            "persona": {"id": "Error"},
+            "meta": {"id": "Error", "confidence": 0, "rationale": f"Could not fetch personas: {e}"}
+        }
+
+
+    # 2) Build a compact catalog to keep the prompt stable
+    catalog = []
+    if isinstance(personas, list):
+        for p in personas:
+            pid = p.get("id") or p.get("name") or p.get("title")
+            if not pid:
+                continue
+            catalog.append({
+                "id": pid,
+                "name": p.get("name") or pid,
+                "overview": p.get("overview", ""),
+                "keyCharacteristics": p.get("keyCharacteristics", []),
+                "primaryGoals": p.get("primaryGoals", [])
+            })
+    else:
+        for key, p in (personas or {}).items():
+            pid = (p or {}).get("id") or (p or {}).get("name") or (p or {}).get("title") or key
+            catalog.append({
+                "id": pid,
+                "name": (p or {}).get("name") or pid,
+                "overview": (p or {}).get("overview", ""),
+                "keyCharacteristics": (p or {}).get("keyCharacteristics", []),
+                "primaryGoals": (p or {}).get("primaryGoals", [])
+            })
+
+    if not catalog:
+        return {
+            "persona": {"id": "Error"},
+            "meta": {"id": "Error", "confidence": 0, "rationale": "No personas found in JSON"}
+        }
+
+    # 3) Prompt with explicit field limits + rules (no invented fields)
+    allowed_ids = [p["id"] for p in catalog]
+    FIELDS_ALLOWED = [
+        "age","gender","marital_status","life_stage","health_status",
+        "caregiving","risk_tolerance","planning_horizon","decision_style",
+        "memory_status","life_event","primary_concerns"
+    ]
+
+    prompt = (
+        "You are PersonaClassifier. Pick EXACTLY ONE persona from ALLOWED_IDS using ONLY FIELDS_ALLOWED.\n"
+        "NEVER invent fields, ages, or personas.\n\n"
+
+        "HARD CONSTRAINTS:\n"
+        "- Use ONLY these user fields: " + ", ".join(FIELDS_ALLOWED) + ".\n"
+        "- Do NOT infer children unless the user's 'caregiving' TEXT explicitly contains 'child' or 'children'.\n"
+        "- 'Sandwich Generation Planner' REQUIRES BOTH: 'parent'/'parents' AND 'child'/'children' in caregiving text.\n"
+        "- If age is provided and clearly conflicts with a persona’s typical profile, down-rank that persona.\n"
+        "- Prefer 'Responsible Supporter' over 'Sandwich' when age is ~55–70 AND caregiving mentions parent(s) BUT NOT child/children.\n"
+        "- 'Empowered Widow' REQUIRES widowhood signals (e.g., 'widow', 'death of spouse').\n"
+        "- 'Solo Ager' REQUIRES clear signals of having no spouse AND no children. "
+        "-  Do NOT classify as 'Empowered Widow' if there is no evidence of a past partnership.\n"
+        "- 'Business Owner Nearing Exit' REQUIRES business/exit/sale intent.\n"
+        "- 'Self-Directed Investor' aligns with high risk tolerance + research/analyze decision style.\n"
+        "- 'HENRY (High Earner, Not Rich Yet)' typically ~35–50 and working full-time; tax/earnings focus is a useful signal.\n"
+        "- If NO persona satisfies constraints, return id:'no_match'.\n\n"
+
+        "TIE-BREAKERS:\n"
+        "1) Highest coverage of explicit user fields. 2) Age proximity (if present). 3) Goals/concerns alignment.\n\n"
+
+        "OUTPUT STRICTLY AS JSON (no prose):\n"
+        "{ \"id\": \"<one of ALLOWED_IDS or 'no_match'>\", \"confidence\": <0..1>, \"rationale\": \"<=30 words\" }\n\n"
+
+        "USER_ANSWERS:\n" + json.dumps(req.answers, indent=2) + "\n\n"
+        "ALLOWED_IDS:\n" + json.dumps(allowed_ids, indent=2) + "\n"
+    )
+
+
+# TODO: insert deterministic shortcuts here (e.g., Responsible Supporter) before building prompt
+
+
+    # 4) Call OpenAI and force JSON output
+    try:
+        reply = openai.ChatCompletion.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=500,
+            temperature=0,
+            response_format={"type": "json_object"}
+        )
+        text = (reply.choices[0].message.content or "").strip()
+
+        # Parse JSON (LLM guaranteed JSON mode, but we still guard)
+        try:
+            result = json.loads(text)
+        except Exception as e:
+            return {
+                "persona": {"id": "Error"},
+                "meta": {"id": "Error", "confidence": 0, "rationale": f"parse fail: {e}; raw starts: {text[:120]}"}
+            }
+
+        # 5) Server-side validations & corrections
+        persona_id = result.get("id") or "Unknown"
+        try:
+            confidence = float(result.get("confidence", 0))
+        except Exception:
+            confidence = 0.0
+        rationale = result.get("rationale") or "No rationale provided"
+
+        # Clamp confidence to [0,1]
+        confidence = max(0.0, min(1.0, confidence))
+
+        # Guard A: id must be allowed or 'no_match'
+        if persona_id not in allowed_ids and persona_id != "no_match":
+            persona_id, confidence, rationale = "no_match", 0.0, "LLM returned an id not in catalog."
+
+        # Compute caregiving flags once for Guard B
+        careg = (str(req.answers.get("caregiving") or "")).lower()
+        has_parent = ("parent" in careg or "parents" in careg)
+        has_child  = ("child" in careg or "children" in careg)
+
+        # ... after Guard B ...
+        if persona_id == "Sandwich Generation Planner" and not (has_parent and has_child):
+            persona_id, confidence, rationale = "no_match", 0.0, "Sandwich requires both parent and child caregiving."
+
+        # Guard C: minimum confidence required
+        MIN_CONFIDENCE = 0.40
+        if confidence < MIN_CONFIDENCE:
+            persona_id, confidence, rationale = "no_match", 0.0, f"Confidence below {MIN_CONFIDENCE}."
+
+        # 6) Return in the shape your frontend expects
+        return {
+            "persona": {"id": persona_id},
+            "meta": {"id": persona_id, "confidence": confidence, "rationale": rationale}
+        }
+
+    except Exception as e:
+        return {
+            "persona": {"id": "Error"},
+            "meta": {"id": "Error", "confidence": 0, "rationale": f"AI classification failed: {e}"}
+        }
+# --- end guarded block ---
+
+
+
    
 from fastapi.responses import JSONResponse
 
@@ -304,3 +535,4 @@ from fastapi.responses import JSONResponse
 @app.head("/", include_in_schema=False)
 def root():
     return JSONResponse({"status": "WhealthChat API is running"})
+
