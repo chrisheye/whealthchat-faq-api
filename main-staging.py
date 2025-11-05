@@ -6,6 +6,7 @@ from weaviate.classes.init import AdditionalConfig
 from weaviate.auth import AuthApiKey
 import weaviate
 import openai
+import requests
 import os
 import re
 from rapidfuzz import fuzz
@@ -363,7 +364,26 @@ from pydantic import BaseModel
 class PersonaRequest(BaseModel):
     answers: Dict
     personasUrl: str
+# ✅ helper function (place this ABOVE @app.post("/persona-classify"))
+def norm_answers(raw: dict) -> dict:
+    """Map Formidable keys → clean fields, coerce types, and trim text."""
+    def s(v): return (str(v or "").strip())
+    def i(v):
+        try:
+            return int(v)
+        except:
+            return None
 
+    return {
+        "gender": s(raw.get("gender")),
+        "age": i(raw.get("age")),
+        "marital_status": s(raw.get("marital_status")),
+        "life_stage": s(raw.get("life_stage")),
+        "how_confident": i(raw.get("how_confident")),
+        "planning_style": s(raw.get("planning_style")),
+        "medical_conditions": s(raw.get("medical_conditions")),
+    }
+    
 @app.post("/persona-classify")
 def persona_classify(req: PersonaRequest):
     """
@@ -371,6 +391,8 @@ def persona_classify(req: PersonaRequest):
     with strict prompt guardrails and server-side validations.
     Returns: {"persona":{"id":...}, "meta":{"id":..., "confidence":..., "rationale":...}}
     """
+    user_answers = norm_answers(req.answers)
+
     # 1) Load personas JSON from the provided URL
     try:
         fetch_headers = {
@@ -427,11 +449,15 @@ def persona_classify(req: PersonaRequest):
     # 3) Prompt with explicit field limits + rules (no invented fields)
     allowed_ids = [p["id"] for p in catalog]
     FIELDS_ALLOWED = [
-        "age","gender","marital_status","life_stage","health_status",
-        "caregiving","risk_tolerance","planning_horizon","decision_style",
-        "memory_status","life_event","primary_concerns"
+        "gender",
+        "age",
+        "marital_status",
+        "life_stage",
+        "how_confident",
+        "planning_style",
+        "medical_conditions",
     ]
-
+    
     prompt = (
         "You are PersonaClassifier. Pick EXACTLY ONE persona from ALLOWED_IDS using ONLY FIELDS_ALLOWED.\n"
         "NEVER invent fields, ages, or personas.\n\n"
@@ -456,12 +482,64 @@ def persona_classify(req: PersonaRequest):
         "OUTPUT STRICTLY AS JSON (no prose):\n"
         "{ \"id\": \"<one of ALLOWED_IDS or 'no_match'>\", \"confidence\": <0..1>, \"rationale\": \"<=30 words\" }\n\n"
 
-        "USER_ANSWERS:\n" + json.dumps(req.answers, indent=2) + "\n\n"
+        "USER_ANSWERS:\n" + json.dumps(user_answers, indent=2) + "\n\n"
         "ALLOWED_IDS:\n" + json.dumps(allowed_ids, indent=2) + "\n"
     )
 
 
-# TODO: insert deterministic shortcuts here (e.g., Responsible Supporter) before building prompt
+    # TODO: insert deterministic shortcuts here (e.g., Responsible Supporter) before building prompt
+    # --- Deterministic shortcuts before calling OpenAI ---
+    w = (user_answers.get("marital_status") or "").lower()
+    m = (user_answers.get("medical_conditions") or "").lower()
+
+    # Shortcut 1 – Empowered Widow
+    if "widow" in w or "widowed" in w:
+        return {
+            "persona": {"id": "Empowered Widow"},
+            "meta": {"id": "Empowered Widow", "confidence": 1.0, "rationale": "Marital status indicates widowhood."}
+        }
+
+    # Shortcut 2 – Diminished Decision-Maker
+    if any(x in m for x in ["cognitive", "memory", "dementia", "alz"]):
+        return {
+            "persona": {"id": "Diminished Decision-Maker"},
+            "meta": {"id": "Diminished Decision-Maker", "confidence": 1.0, "rationale": "Medical condition suggests cognitive decline."}
+        }
+        
+    # Shortcut 3 – Business Owner Nearing Exit
+    ls = (user_answers.get("life_stage") or "").lower()
+    if any(k in ls for k in ["business owner", "owner", "succession", "exit", "selling business", "sale of business"]):
+        return {
+            "persona": {"id": "Business Owner Nearing Exit"},
+            "meta": {"id": "Business Owner Nearing Exit", "confidence": 1.0,
+                     "rationale": "Life stage indicates business ownership and exit/succession intent."}
+        }
+
+    # Shortcut 4 – Self-Directed Investor
+    conf = user_answers.get("how_confident") or 0
+    ps = (user_answers.get("planning_style") or "").lower()
+
+    if conf >= 4 and any(k in ps for k in ["self", "independent", "do it myself", "analyze", "research", "hands-on"]):
+        return {
+            "persona": {"id": "Self-Directed Investor"},
+            "meta": {"id": "Self-Directed Investor", "confidence": 0.95,
+                     "rationale": "High confidence and self-directed planning style."}
+        }
+
+    # Shortcut 5 – Responsible Supporter
+    ls = (user_answers.get("life_stage") or "").lower()
+    age = user_answers.get("age") or 0
+
+    if any(k in ls for k in ["caring for parent", "caregiving for parent", "supporting parent", "aging parent"]) \
+       or ("caregiver" in ls and "parent" in ls):
+        # gentle age nudge, but not required
+        if 50 <= age <= 72 or age == 0:
+            return {
+                "persona": {"id": "Responsible Supporter"},
+                "meta": {"id": "Responsible Supporter", "confidence": 0.9,
+                         "rationale": "Life stage indicates caregiving for a parent."}
+            }
+
 
 
     # 4) Call OpenAI and force JSON output
@@ -526,8 +604,6 @@ def persona_classify(req: PersonaRequest):
         }
 # --- end guarded block ---
 
-
-
    
 from fastapi.responses import JSONResponse
 
@@ -535,4 +611,3 @@ from fastapi.responses import JSONResponse
 @app.head("/", include_in_schema=False)
 def root():
     return JSONResponse({"status": "WhealthChat API is running"})
-
