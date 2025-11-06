@@ -242,7 +242,9 @@ async def get_faq(request: Request):
                 user_ok = (obj.properties.get("user","").lower() in [requested_user, "both"])
                 if src_ok and user_ok:
                     print("✅ Exact-match override via vector results.")
-                    return {"response": format_response(obj)}
+                    resp_text = format_response(obj)
+                    resp_text = apply_audience_tone(resp_text, requested_user)  # advisor/consumer tone for exact matches
+                    return {"response": resp_text}
 
         print("📦 vector sources:", [o.properties.get("source") for o in objects])
         print(f"🔍 Retrieved {len(objects)} vector matches:")
@@ -629,4 +631,3 @@ from fastapi.responses import JSONResponse
 @app.head("/", include_in_schema=False)
 def root():
     return JSONResponse({"status": "WhealthChat API is running"})
-
