@@ -191,6 +191,9 @@ async def get_faq(request: Request):
 
     try:
         user_filt = Filter.by_property("user").equal("both") | Filter.by_property("user").equal(requested_user)
+        if requested_user == "professional":
+            user_filt = user_filt | Filter.by_property("user").equal("advisor")
+
         combined_filt = and_filters(user_filt, tenant_filt)
 
         filter = Filter.by_property("question").equal(raw_q.strip()) & combined_filt
@@ -233,6 +236,9 @@ async def get_faq(request: Request):
 
     try:
         user_filt = Filter.by_property("user").equal("both") | Filter.by_property("user").equal(requested_user)
+        if requested_user == "professional":
+            user_filt = user_filt | Filter.by_property("user").equal("advisor")
+
         combined_filt = and_filters(user_filt, tenant_filt)
 
         vec_res = collection.query.near_text(
@@ -249,7 +255,12 @@ async def get_faq(request: Request):
             db_q = (obj.properties.get("question") or "").strip()
             if normalize(db_q) == q_norm:
                 src_ok = ((obj.properties.get("source") or "").strip().lower() in allowed_lower)
-                user_ok = (obj.properties.get("user","").lower() in [requested_user, "both"])
+                row_user = (obj.properties.get("user","") or "").strip().lower()
+                aud_ok = [requested_user, "both"]
+                if requested_user == "professional":
+                    aud_ok.append("advisor")
+                user_ok = (row_user in aud_ok)
+
                 if src_ok and user_ok:
                     print("✅ Exact-match override via vector results.")
                     resp_text = format_response(obj)
