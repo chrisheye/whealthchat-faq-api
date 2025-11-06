@@ -6,6 +6,7 @@ from weaviate.classes.init import AdditionalConfig
 from weaviate.auth import AuthApiKey
 import weaviate
 import openai
+import requests
 import os
 import re
 from rapidfuzz import fuzz
@@ -151,6 +152,29 @@ async def _start_keepalive():
 def version_check():
     return {"status": "Running", "message": "✅ CORS enabled version"}
 
+
+async def rewrite_with_tone(text, audience_block):
+    if not audience_block:
+        return text
+
+    prompt = (
+        f"{audience_block}\n\n"
+        "Rewrite the following answer to match this audience tone. "
+        "Do NOT change the meaning. Do NOT add new content. "
+        "Just adjust pronouns and framing.\n\n"
+        f"ANSWER:\n{text}"
+    )
+
+    reply = openai.ChatCompletion.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=400,
+        temperature=0
+    )
+
+    return reply.choices[0].message.content.strip()
+
+
 @app.post("/faq")
 async def get_faq(request: Request):
     body = await request.json()
@@ -161,8 +185,35 @@ async def get_faq(request: Request):
     q_norm = normalize(raw_q)
     allowed = allowed_sources_for_request(request)
     allowed_lower = {s.lower() for s in allowed}
-    tenant_filt = source_filter(allowed)
+    # make source filtering tolerant to case/spacing variants
+    allowed_ci = list({
+    s for a in allowed for s in (
+        a,
+        a.lower(),
+        a.upper(),
+        a.replace(" ", "").lower()
+    ) if s
+    })
+    tenant_filt = source_filter(allowed_ci)
 
+    
+    # ---- Audience tone block (insert after requested_user parsing) ----
+    audience_block = ""
+    if requested_user == "professional":
+        audience_block = (
+            "You are answering for a financial advisor helping clients.\n"
+            "Write in the advisor’s voice: use 'your client' not 'you'.\n"
+            "Prioritize communication strategies, behavioral cues, risk framing, and next-step guidance."
+        )
+    elif requested_user == "consumer":
+        audience_block = (
+            "You are advising an individual or family.\n"
+            "Write directly to them using 'you'.\n"
+            "Be clear, empathetic, and action-oriented with practical next steps."
+        )
+    # -------------------------------------------------------------------
+
+    
     if not raw_q:
         raise HTTPException(status_code=400, detail="Missing 'query' in request body.")
 
@@ -173,6 +224,7 @@ async def get_faq(request: Request):
 
     try:
         user_filt = Filter.by_property("user").equal("both") | Filter.by_property("user").equal(requested_user)
+
         combined_filt = and_filters(user_filt, tenant_filt)
 
         filter = Filter.by_property("question").equal(raw_q.strip()) & combined_filt
@@ -180,9 +232,10 @@ async def get_faq(request: Request):
 
         exact_res = collection.query.fetch_objects(
             filters=filter,
-            return_properties=["question", "answer", "coachingTip", "source"],  # add source
+            return_properties=["question", "answer", "coachingTip", "source", "user"],
             limit=12
         )
+        
         print("📦 exact sources:", [o.properties.get("source") for o in exact_res.objects])
 
         for obj in exact_res.objects:
@@ -190,12 +243,21 @@ async def get_faq(request: Request):
             db_q_norm = normalize(db_q)
             if db_q_norm == q_norm:
                 src = (obj.properties.get("source") or "").strip().lower()
-                if src not in allowed_lower:
+                row_user = (obj.properties.get("user") or "").strip().lower()
 
+                if src not in allowed_lower:
                     print("⛔ blocked exact-match source:", src, "allowed:", allowed)
                     continue
+
                 print("✅ Exact match confirmed.")
-                return {"response": format_response(obj)}
+                resp_text = format_response(obj)
+
+                # ✅ Rewrite tone ONLY when user = both
+                if row_user == "both":
+                    resp_text = await rewrite_with_tone(resp_text, audience_block)
+
+                return {"response": resp_text}
+
 
         print("⚠️ No strict match. Proceeding to vector search.")
 
@@ -205,6 +267,7 @@ async def get_faq(request: Request):
 
     try:
         user_filt = Filter.by_property("user").equal("both") | Filter.by_property("user").equal(requested_user)
+
         combined_filt = and_filters(user_filt, tenant_filt)
 
         vec_res = collection.query.near_text(
@@ -220,11 +283,17 @@ async def get_faq(request: Request):
         for obj in objects:
             db_q = (obj.properties.get("question") or "").strip()
             if normalize(db_q) == q_norm:
-                src_ok = ((obj.properties.get("source") or "").strip() in allowed)
-                user_ok = (obj.properties.get("user","").lower() in [requested_user, "both"])
+                src_ok = ((obj.properties.get("source") or "").strip().lower() in allowed_lower)
+                row_user = (obj.properties.get("user","") or "").strip().lower()
+                aud_ok = [requested_user, "both"]
+                if requested_user == "professional":
+                    aud_ok.append("professional")
+                user_ok = (row_user in aud_ok)
+
                 if src_ok and user_ok:
                     print("✅ Exact-match override via vector results.")
-                    return {"response": format_response(obj)}
+                    resp_text = format_response(obj)
+                    return {"response": resp_text}
 
         print("📦 vector sources:", [o.properties.get("source") for o in objects])
         print(f"🔍 Retrieved {len(objects)} vector matches:")
@@ -233,12 +302,16 @@ async def get_faq(request: Request):
         questions_seen = []
         for obj in objects:
             src = (obj.properties.get("source") or "").strip()
-            if src not in allowed:
-                print("⛔ blocked vector source:", src, "allowed:", allowed)
+            if src.lower() not in allowed_lower:
+                print("⛔ blocked vector source (ci):", src, "allowed:", allowed)
+                continue
+            row_user = (obj.properties.get("user", "") or "").strip().lower()
+            aud_ok = [requested_user, "both"]
+            if requested_user == "professional":
+                aud_ok.append("professional")
+            if row_user not in aud_ok:
                 continue
 
-            if obj.properties.get("user", "").lower() not in [requested_user, "both"]:
-                continue
             q_text = obj.properties.get("question", "").strip()
             is_duplicate = any(fuzz.ratio(q_text, seen_q) > 90 for seen_q in questions_seen)
             if not is_duplicate:
@@ -304,24 +377,10 @@ async def get_faq(request: Request):
             combined = "\n\n---\n\n".join(blocks)
             # ... after you build `combined` from blocks, right before prompt:
             safe_q = sanitize_question_for_disallowed_brands(raw_q, allowed)
-                
-            # Voice guard: if top sources are global-only, require neutral third-person (no "we/our")
-            top_sources = { (obj.properties.get("source") or "").strip().lower() for obj in top }
-            allowed_lower = { s.lower() for s in allowed }
-            tenant_sources = { s for s in allowed_lower if s != "whealthchat" }
-            global_only = ("whealthchat" in top_sources) and not (top_sources & tenant_sources)
-
-            voice_note = ""
-            if global_only:
-                voice_note = (
-            "IMPORTANT STYLE RULE: Answer in a neutral third-person voice. "
-            "Do NOT use 'we'/'our' or imply the assistant represents any specific firm. "
-            "Provide general, educational information only."
-            )
 
             prompt = (
                 f"{SYSTEM_PROMPT}\n\n"
-                f"{voice_note}\n\n"
+                f"{audience_block}\n\n"   # <<< ensure professional/consumer tone is applied
                 f"Question: {safe_q}\n\n"
                 f"Here are multiple answers and coaching tips from similar questions.\n\n"
                 f"1. Summarize the answers into one helpful response.\n"
@@ -353,6 +412,14 @@ async def get_faq(request: Request):
         )
     }
 
+
+# --- audience post-processor (temporary no-op) ---
+def apply_audience_tone(text: str, audience: str) -> str:
+    """Placeholder so apply_audience_tone() calls don't break execution."""
+    return text
+# -------------------------------------------------
+
+
 def format_response(obj):
     answer = obj.properties.get("answer", "").strip()
     tip = obj.properties.get("coachingTip", "").strip()
@@ -369,6 +436,254 @@ def count_faqs():
     except Exception as e:
         logger.exception("❌ Error counting FAQs")
         raise HTTPException(status_code=500, detail=str(e))
+
+# --- persona-classify (staging) — CLEAN BLOCK ---
+# --- persona-classify (staging) — GUARDED BLOCK ---
+from typing import Dict
+from pydantic import BaseModel
+
+class PersonaRequest(BaseModel):
+    answers: Dict
+    personasUrl: str
+# ✅ helper function (place this ABOVE @app.post("/persona-classify"))
+def norm_answers(raw: dict) -> dict:
+    """Map Formidable keys → clean fields, coerce types, and trim text."""
+    def s(v): return (str(v or "").strip())
+    def i(v):
+        try:
+            return int(v)
+        except:
+            return None
+
+    return {
+        "gender": s(raw.get("gender")),
+        "age": i(raw.get("age")),
+        "marital_status": s(raw.get("marital_status")),
+        "life_stage": s(raw.get("life_stage")),
+        "how_confident": i(raw.get("how_confident")),
+        "planning_style": s(raw.get("planning_style")),
+        "medical_conditions": s(raw.get("medical_conditions")),
+    }
+    
+@app.post("/persona-classify")
+def persona_classify(req: PersonaRequest):
+    """
+    Classify a user's answers into the best persona using OpenAI,
+    with strict prompt guardrails and server-side validations.
+    Returns: {"persona":{"id":...}, "meta":{"id":..., "confidence":..., "rationale":...}}
+    """
+    user_answers = norm_answers(req.answers)
+
+    # 1) Load personas JSON from the provided URL
+    try:
+        fetch_headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0 Safari/537.36 WhealthChat/1.0"
+            ),
+            "Accept": "application/json, text/plain, */*",
+        }
+        resp = requests.get(req.personasUrl, headers=fetch_headers, timeout=10)
+        if resp.status_code >= 400:
+            print(f"[personas fetch] {resp.status_code} {resp.reason} — url={req.personasUrl} body_start={resp.text[:200]}")
+        resp.raise_for_status()
+        personas = resp.json()
+    except Exception as e:
+        return {
+            "persona": {"id": "Error"},
+            "meta": {"id": "Error", "confidence": 0, "rationale": f"Could not fetch personas: {e}"}
+        }
+
+
+    # 2) Build a compact catalog to keep the prompt stable
+    catalog = []
+    if isinstance(personas, list):
+        for p in personas:
+            pid = p.get("id") or p.get("name") or p.get("title")
+            if not pid:
+                continue
+            catalog.append({
+                "id": pid,
+                "name": p.get("name") or pid,
+                "overview": p.get("overview", ""),
+                "keyCharacteristics": p.get("keyCharacteristics", []),
+                "primaryGoals": p.get("primaryGoals", [])
+            })
+    else:
+        for key, p in (personas or {}).items():
+            pid = (p or {}).get("id") or (p or {}).get("name") or (p or {}).get("title") or key
+            catalog.append({
+                "id": pid,
+                "name": (p or {}).get("name") or pid,
+                "overview": (p or {}).get("overview", ""),
+                "keyCharacteristics": (p or {}).get("keyCharacteristics", []),
+                "primaryGoals": (p or {}).get("primaryGoals", [])
+            })
+
+    if not catalog:
+        return {
+            "persona": {"id": "Error"},
+            "meta": {"id": "Error", "confidence": 0, "rationale": "No personas found in JSON"}
+        }
+
+    # 3) Prompt with explicit field limits + rules (no invented fields)
+    allowed_ids = [p["id"] for p in catalog]
+    FIELDS_ALLOWED = [
+        "gender",
+        "age",
+        "marital_status",
+        "life_stage",
+        "how_confident",
+        "planning_style",
+        "medical_conditions",
+    ]
+    
+    prompt = (
+        "You are PersonaClassifier. Pick EXACTLY ONE persona from ALLOWED_IDS using ONLY FIELDS_ALLOWED.\n"
+        "NEVER invent fields, ages, or personas.\n\n"
+
+        "HARD CONSTRAINTS:\n"
+        "- Use ONLY these user fields: " + ", ".join(FIELDS_ALLOWED) + ".\n"
+        "- Do NOT infer children unless the user's 'caregiving' TEXT explicitly contains 'child' or 'children'.\n"
+        "- 'Sandwich Generation Planner' REQUIRES BOTH: 'parent'/'parents' AND 'child'/'children' in caregiving text.\n"
+        "- If age is provided and clearly conflicts with a persona’s typical profile, down-rank that persona.\n"
+        "- Prefer 'Responsible Supporter' over 'Sandwich' when age is ~55–70 AND caregiving mentions parent(s) BUT NOT child/children.\n"
+        "- 'Empowered Widow' REQUIRES widowhood signals (e.g., 'widow', 'death of spouse').\n"
+        "- 'Solo Ager' REQUIRES clear signals of having no spouse AND no children. "
+        "-  Do NOT classify as 'Empowered Widow' if there is no evidence of a past partnership.\n"
+        "- 'Business Owner Nearing Exit' REQUIRES business/exit/sale intent.\n"
+        "- 'Self-Directed Investor' aligns with high risk tolerance + research/analyze decision style.\n"
+        "- 'HENRY (High Earner, Not Rich Yet)' typically ~35–50 and working full-time; tax/earnings focus is a useful signal.\n"
+        "- If NO persona satisfies constraints, return id:'no_match'.\n\n"
+
+        "TIE-BREAKERS:\n"
+        "1) Highest coverage of explicit user fields. 2) Age proximity (if present). 3) Goals/concerns alignment.\n\n"
+
+        "OUTPUT STRICTLY AS JSON (no prose):\n"
+        "{ \"id\": \"<one of ALLOWED_IDS or 'no_match'>\", \"confidence\": <0..1>, \"rationale\": \"<=30 words\" }\n\n"
+
+        "USER_ANSWERS:\n" + json.dumps(user_answers, indent=2) + "\n\n"
+        "ALLOWED_IDS:\n" + json.dumps(allowed_ids, indent=2) + "\n"
+    )
+
+
+    # TODO: insert deterministic shortcuts here (e.g., Responsible Supporter) before building prompt
+    # --- Deterministic shortcuts before calling OpenAI ---
+    w = (user_answers.get("marital_status") or "").lower()
+    m = (user_answers.get("medical_conditions") or "").lower()
+
+    # Shortcut 1 – Empowered Widow
+    if "widow" in w or "widowed" in w:
+        return {
+            "persona": {"id": "Empowered Widow"},
+            "meta": {"id": "Empowered Widow", "confidence": 1.0, "rationale": "Marital status indicates widowhood."}
+        }
+
+    # Shortcut 2 – Diminished Decision-Maker
+    if any(x in m for x in ["cognitive", "memory", "dementia", "alz"]):
+        return {
+            "persona": {"id": "Diminished Decision-Maker"},
+            "meta": {"id": "Diminished Decision-Maker", "confidence": 1.0, "rationale": "Medical condition suggests cognitive decline."}
+        }
+        
+    # Shortcut 3 – Business Owner Nearing Exit
+    ls = (user_answers.get("life_stage") or "").lower()
+    if any(k in ls for k in ["business owner", "owner", "succession", "exit", "selling business", "sale of business"]):
+        return {
+            "persona": {"id": "Business Owner Nearing Exit"},
+            "meta": {"id": "Business Owner Nearing Exit", "confidence": 1.0,
+                     "rationale": "Life stage indicates business ownership and exit/succession intent."}
+        }
+
+    # Shortcut 4 – Self-Directed Investor
+    conf = user_answers.get("how_confident") or 0
+    ps = (user_answers.get("planning_style") or "").lower()
+
+    if conf >= 4 and any(k in ps for k in ["self", "independent", "do it myself", "analyze", "research", "hands-on"]):
+        return {
+            "persona": {"id": "Self-Directed Investor"},
+            "meta": {"id": "Self-Directed Investor", "confidence": 0.95,
+                     "rationale": "High confidence and self-directed planning style."}
+        }
+
+    # Shortcut 5 – Responsible Supporter
+    ls = (user_answers.get("life_stage") or "").lower()
+    age = user_answers.get("age") or 0
+
+    if any(k in ls for k in ["caring for parent", "caregiving for parent", "supporting parent", "aging parent"]) \
+       or ("caregiver" in ls and "parent" in ls):
+        # gentle age nudge, but not required
+        if 50 <= age <= 72 or age == 0:
+            return {
+                "persona": {"id": "Responsible Supporter"},
+                "meta": {"id": "Responsible Supporter", "confidence": 0.9,
+                         "rationale": "Life stage indicates caregiving for a parent."}
+            }
+
+
+
+    # 4) Call OpenAI and force JSON output
+    try:
+        reply = openai.ChatCompletion.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=500,
+            temperature=0,
+            response_format={"type": "json_object"}
+        )
+        text = (reply.choices[0].message.content or "").strip()
+
+        # Parse JSON (LLM guaranteed JSON mode, but we still guard)
+        try:
+            result = json.loads(text)
+        except Exception as e:
+            return {
+                "persona": {"id": "Error"},
+                "meta": {"id": "Error", "confidence": 0, "rationale": f"parse fail: {e}; raw starts: {text[:120]}"}
+            }
+
+        # 5) Server-side validations & corrections
+        persona_id = result.get("id") or "Unknown"
+        try:
+            confidence = float(result.get("confidence", 0))
+        except Exception:
+            confidence = 0.0
+        rationale = result.get("rationale") or "No rationale provided"
+
+        # Clamp confidence to [0,1]
+        confidence = max(0.0, min(1.0, confidence))
+
+        # Guard A: id must be allowed or 'no_match'
+        if persona_id not in allowed_ids and persona_id != "no_match":
+            persona_id, confidence, rationale = "no_match", 0.0, "LLM returned an id not in catalog."
+
+        # Compute caregiving flags once for Guard B
+        careg = (str(req.answers.get("caregiving") or "")).lower()
+        has_parent = ("parent" in careg or "parents" in careg)
+        has_child  = ("child" in careg or "children" in careg)
+
+        # ... after Guard B ...
+        if persona_id == "Sandwich Generation Planner" and not (has_parent and has_child):
+            persona_id, confidence, rationale = "no_match", 0.0, "Sandwich requires both parent and child caregiving."
+
+        # Guard C: minimum confidence required
+        MIN_CONFIDENCE = 0.40
+        if confidence < MIN_CONFIDENCE:
+            persona_id, confidence, rationale = "no_match", 0.0, f"Confidence below {MIN_CONFIDENCE}."
+
+        # 6) Return in the shape your frontend expects
+        return {
+            "persona": {"id": persona_id},
+            "meta": {"id": persona_id, "confidence": confidence, "rationale": rationale}
+        }
+
+    except Exception as e:
+        return {
+            "persona": {"id": "Error"},
+            "meta": {"id": "Error", "confidence": 0, "rationale": f"AI classification failed: {e}"}
+        }
+# --- end guarded block ---
 
    
 from fastapi.responses import JSONResponse
