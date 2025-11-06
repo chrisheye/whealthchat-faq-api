@@ -252,12 +252,11 @@ async def get_faq(request: Request):
                 print("✅ Exact match confirmed.")
                 resp_text = format_response(obj)
 
-                # NEW: advisor/consumer tone for exact-match “both”
+                # ✅ Rewrite tone ONLY when user = both
                 if row_user == "both":
                     resp_text = await rewrite_with_tone(resp_text, audience_block)
 
                 return {"response": resp_text}
-
 
 
         print("⚠️ No strict match. Proceeding to vector search.")
@@ -294,7 +293,6 @@ async def get_faq(request: Request):
                 if src_ok and user_ok:
                     print("✅ Exact-match override via vector results.")
                     resp_text = format_response(obj)
-                    resp_text = apply_audience_tone(resp_text, requested_user)  # professional/consumer tone for exact matches
                     return {"response": resp_text}
 
         print("📦 vector sources:", [o.properties.get("source") for o in objects])
@@ -694,3 +692,4 @@ from fastapi.responses import JSONResponse
 @app.head("/", include_in_schema=False)
 def root():
     return JSONResponse({"status": "WhealthChat API is running"})
+
