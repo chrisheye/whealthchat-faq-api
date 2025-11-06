@@ -152,6 +152,29 @@ async def _start_keepalive():
 def version_check():
     return {"status": "Running", "message": "✅ CORS enabled version"}
 
+
+async def rewrite_with_tone(text, audience_block):
+    if not audience_block:
+        return text
+
+    prompt = (
+        f"{audience_block}\n\n"
+        "Rewrite the following answer to match this audience tone. "
+        "Do NOT change the meaning. Do NOT add new content. "
+        "Just adjust pronouns and framing.\n\n"
+        f"ANSWER:\n{text}"
+    )
+
+    reply = openai.ChatCompletion.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=400,
+        temperature=0
+    )
+
+    return reply.choices[0].message.content.strip()
+
+
 @app.post("/faq")
 async def get_faq(request: Request):
     body = await request.json()
@@ -229,11 +252,12 @@ async def get_faq(request: Request):
                 print("✅ Exact match confirmed.")
                 resp_text = format_response(obj)
 
-                # NEW: only post-process when the KB row is shared by both audiences
+                # NEW: advisor/consumer tone for exact-match “both”
                 if row_user == "both":
-                    resp_text = apply_audience_tone(resp_text, requested_user)
+                    resp_text = await rewrite_with_tone(resp_text, audience_block)
 
                 return {"response": resp_text}
+
 
 
         print("⚠️ No strict match. Proceeding to vector search.")
@@ -670,4 +694,3 @@ from fastapi.responses import JSONResponse
 @app.head("/", include_in_schema=False)
 def root():
     return JSONResponse({"status": "WhealthChat API is running"})
-
