@@ -390,6 +390,14 @@ async def get_faq(request: Request):
         )
     }
 
+
+# --- audience post-processor (temporary no-op) ---
+def apply_audience_tone(text: str, audience: str) -> str:
+    """Placeholder so apply_audience_tone() calls don't break execution."""
+    return text
+# -------------------------------------------------
+
+
 def format_response(obj):
     answer = obj.properties.get("answer", "").strip()
     tip = obj.properties.get("coachingTip", "").strip()
