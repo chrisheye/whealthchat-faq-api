@@ -198,9 +198,10 @@ async def get_faq(request: Request):
 
         exact_res = collection.query.fetch_objects(
             filters=filter,
-            return_properties=["question", "answer", "coachingTip", "source"],  # add source
+            return_properties=["question", "answer", "coachingTip", "source", "user"],
             limit=12
         )
+        
         print("📦 exact sources:", [o.properties.get("source") for o in exact_res.objects])
 
         for obj in exact_res.objects:
@@ -208,12 +209,21 @@ async def get_faq(request: Request):
             db_q_norm = normalize(db_q)
             if db_q_norm == q_norm:
                 src = (obj.properties.get("source") or "").strip().lower()
-                if src not in allowed_lower:
+                row_user = (obj.properties.get("user") or "").strip().lower()
 
+                if src not in allowed_lower:
                     print("⛔ blocked exact-match source:", src, "allowed:", allowed)
                     continue
+
                 print("✅ Exact match confirmed.")
-                return {"response": format_response(obj)}
+                resp_text = format_response(obj)
+
+                # NEW: only post-process when the KB row is shared by both audiences
+                if row_user == "both":
+                    resp_text = apply_audience_tone(resp_text, requested_user)
+
+                return {"response": resp_text}
+
 
         print("⚠️ No strict match. Proceeding to vector search.")
 
