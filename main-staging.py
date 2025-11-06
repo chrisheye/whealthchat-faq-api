@@ -201,8 +201,6 @@ async def get_faq(request: Request):
 
     try:
         user_filt = Filter.by_property("user").equal("both") | Filter.by_property("user").equal(requested_user)
-        if requested_user == "professional":
-            user_filt = user_filt | Filter.by_property("user").equal("advisor")
 
         combined_filt = and_filters(user_filt, tenant_filt)
 
@@ -246,8 +244,6 @@ async def get_faq(request: Request):
 
     try:
         user_filt = Filter.by_property("user").equal("both") | Filter.by_property("user").equal(requested_user)
-        if requested_user == "professional":
-            user_filt = user_filt | Filter.by_property("user").equal("advisor")
 
         combined_filt = and_filters(user_filt, tenant_filt)
 
@@ -268,13 +264,13 @@ async def get_faq(request: Request):
                 row_user = (obj.properties.get("user","") or "").strip().lower()
                 aud_ok = [requested_user, "both"]
                 if requested_user == "professional":
-                    aud_ok.append("advisor")
+                    aud_ok.append("professional")
                 user_ok = (row_user in aud_ok)
 
                 if src_ok and user_ok:
                     print("✅ Exact-match override via vector results.")
                     resp_text = format_response(obj)
-                    resp_text = apply_audience_tone(resp_text, requested_user)  # advisor/consumer tone for exact matches
+                    resp_text = apply_audience_tone(resp_text, requested_user)  # professional/consumer tone for exact matches
                     return {"response": resp_text}
 
         print("📦 vector sources:", [o.properties.get("source") for o in objects])
@@ -290,7 +286,7 @@ async def get_faq(request: Request):
             row_user = (obj.properties.get("user", "") or "").strip().lower()
             aud_ok = [requested_user, "both"]
             if requested_user == "professional":
-                aud_ok.append("advisor")
+                aud_ok.append("professional")
             if row_user not in aud_ok:
                 continue
 
@@ -362,7 +358,7 @@ async def get_faq(request: Request):
 
             prompt = (
                 f"{SYSTEM_PROMPT}\n\n"
-                f"{audience_block}\n\n"   # <<< ensure advisor/consumer tone is applied
+                f"{audience_block}\n\n"   # <<< ensure professional/consumer tone is applied
                 f"Question: {safe_q}\n\n"
                 f"Here are multiple answers and coaching tips from similar questions.\n\n"
                 f"1. Summarize the answers into one helpful response.\n"
@@ -666,3 +662,4 @@ from fastapi.responses import JSONResponse
 @app.head("/", include_in_schema=False)
 def root():
     return JSONResponse({"status": "WhealthChat API is running"})
+
