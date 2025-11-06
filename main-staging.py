@@ -163,7 +163,24 @@ async def get_faq(request: Request):
     allowed = allowed_sources_for_request(request)
     allowed_lower = {s.lower() for s in allowed}
     tenant_filt = source_filter(allowed)
+    
+    # ---- Audience tone block (insert after requested_user parsing) ----
+    audience_block = ""
+    if requested_user == "professional":
+        audience_block = (
+            "You are answering for a financial advisor helping clients.\n"
+            "Write in the advisor’s voice: use 'your client' not 'you'.\n"
+            "Prioritize communication strategies, behavioral cues, risk framing, and next-step guidance."
+        )
+    elif requested_user == "consumer":
+        audience_block = (
+            "You are advising an individual or family.\n"
+            "Write directly to them using 'you'.\n"
+            "Be clear, empathetic, and action-oriented with practical next steps."
+        )
+    # -------------------------------------------------------------------
 
+    
     if not raw_q:
         raise HTTPException(status_code=400, detail="Missing 'query' in request body.")
 
@@ -308,6 +325,7 @@ async def get_faq(request: Request):
 
             prompt = (
                 f"{SYSTEM_PROMPT}\n\n"
+                f"{audience_block}\n\n"   # <<< ensure advisor/consumer tone is applied
                 f"Question: {safe_q}\n\n"
                 f"Here are multiple answers and coaching tips from similar questions.\n\n"
                 f"1. Summarize the answers into one helpful response.\n"
@@ -611,3 +629,4 @@ from fastapi.responses import JSONResponse
 @app.head("/", include_in_schema=False)
 def root():
     return JSONResponse({"status": "WhealthChat API is running"})
+
