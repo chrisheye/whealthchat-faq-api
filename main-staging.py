@@ -162,7 +162,17 @@ async def get_faq(request: Request):
     q_norm = normalize(raw_q)
     allowed = allowed_sources_for_request(request)
     allowed_lower = {s.lower() for s in allowed}
-    tenant_filt = source_filter(allowed)
+    # make source filtering tolerant to case/spacing variants
+    allowed_ci = list({
+    s for a in allowed for s in (
+        a,
+        a.lower(),
+        a.upper(),
+        a.replace(" ", "").lower()
+    ) if s
+    })
+    tenant_filt = source_filter(allowed_ci)
+
     
     # ---- Audience tone block (insert after requested_user parsing) ----
     audience_block = ""
@@ -656,5 +666,3 @@ from fastapi.responses import JSONResponse
 @app.head("/", include_in_schema=False)
 def root():
     return JSONResponse({"status": "WhealthChat API is running"})
-    return JSONResponse({"status": "WhealthChat API is running"})
-
