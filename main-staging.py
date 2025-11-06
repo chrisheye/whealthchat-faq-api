@@ -248,7 +248,7 @@ async def get_faq(request: Request):
         for obj in objects:
             db_q = (obj.properties.get("question") or "").strip()
             if normalize(db_q) == q_norm:
-                src_ok = ((obj.properties.get("source") or "").strip() in allowed)
+                src_ok = ((obj.properties.get("source") or "").strip().lower() in allowed_lower)
                 user_ok = (obj.properties.get("user","").lower() in [requested_user, "both"])
                 if src_ok and user_ok:
                     print("✅ Exact-match override via vector results.")
@@ -263,8 +263,8 @@ async def get_faq(request: Request):
         questions_seen = []
         for obj in objects:
             src = (obj.properties.get("source") or "").strip()
-            if src not in allowed:
-                print("⛔ blocked vector source:", src, "allowed:", allowed)
+            if src.lower() not in allowed_lower:
+                print("⛔ blocked vector source (ci):", src, "allowed:", allowed)
                 continue
 
             if obj.properties.get("user", "").lower() not in [requested_user, "both"]:
