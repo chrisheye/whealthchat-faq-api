@@ -277,9 +277,13 @@ async def get_faq(request: Request):
             if src.lower() not in allowed_lower:
                 print("⛔ blocked vector source (ci):", src, "allowed:", allowed)
                 continue
-
-            if obj.properties.get("user", "").lower() not in [requested_user, "both"]:
+            row_user = (obj.properties.get("user", "") or "").strip().lower()
+            aud_ok = [requested_user, "both"]
+            if requested_user == "professional":
+                aud_ok.append("advisor")
+            if row_user not in aud_ok:
                 continue
+
             q_text = obj.properties.get("question", "").strip()
             is_duplicate = any(fuzz.ratio(q_text, seen_q) > 90 for seen_q in questions_seen)
             if not is_duplicate:
@@ -652,3 +656,5 @@ from fastapi.responses import JSONResponse
 @app.head("/", include_in_schema=False)
 def root():
     return JSONResponse({"status": "WhealthChat API is running"})
+    return JSONResponse({"status": "WhealthChat API is running"})
+
