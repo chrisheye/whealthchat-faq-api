@@ -14,6 +14,8 @@ import time
 import logging
 import asyncio
 from contextlib import suppress
+from pydantic import BaseModel
+
 
 
 import json, os
@@ -465,7 +467,36 @@ def norm_answers(raw: dict) -> dict:
         "medical_conditions": s(raw.get("medical_conditions")),
     }
     
+from fastapi import Request
+
 @app.post("/persona-classify")
+async def persona_classify(request: Request):
+    data = await request.json()
+
+    # Accept either flat JSON or { "answers": {...}, "personasUrl": "..." }
+    if isinstance(data, dict) and "answers" in data:
+        answers = data.get("answers") or {}
+        personas_url = data.get("personasUrl") or data.get("personas_url")
+    else:
+        answers = {
+            "gender": data.get("gender"),
+            "age": data.get("age"),
+            "marital_status": data.get("marital_status"),
+            "life_stage": data.get("life_stage"),
+            "how_confident": data.get("how_confident"),
+            "planning_style": data.get("planning_style"),
+            "medical_conditions": data.get("medical_conditions"),
+        }
+        personas_url = data.get("personasUrl") or data.get("personas_url")
+
+# Shim to keep the rest of your code working as-is
+class _Req: pass
+req = _Req()
+req.answers = answers
+req.personasUrl = personas_url
+    return _persona_classify_core(req)
+
+
 def persona_classify(req: PersonaRequest):
     """
     Classify a user's answers into the best persona using OpenAI,
@@ -692,4 +723,3 @@ from fastapi.responses import JSONResponse
 @app.head("/", include_in_schema=False)
 def root():
     return JSONResponse({"status": "WhealthChat API is running"})
-
