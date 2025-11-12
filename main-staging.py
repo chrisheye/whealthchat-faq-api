@@ -490,10 +490,10 @@ async def persona_classify(request: Request):
         personas_url = data.get("personasUrl") or data.get("personas_url")
 
 # Shim to keep the rest of your code working as-is
-class _Req: pass
-req = _Req()
-req.answers = answers
-req.personasUrl = personas_url
+    class _Req: pass
+    req = _Req()
+    req.answers = answers
+    req.personasUrl = personas_url
     return _persona_classify_core(req)
 
 def persona_classify(req: PersonaRequest):
