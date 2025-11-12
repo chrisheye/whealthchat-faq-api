@@ -496,7 +496,6 @@ req.answers = answers
 req.personasUrl = personas_url
     return _persona_classify_core(req)
 
-
 def persona_classify(req: PersonaRequest):
     """
     Classify a user's answers into the best persona using OpenAI,
