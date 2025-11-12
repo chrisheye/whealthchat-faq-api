@@ -496,7 +496,7 @@ async def persona_classify(request: Request):
     req.personasUrl = personas_url
     return _persona_classify_core(req)
 
-def persona_classify(req: PersonaRequest):
+def _persona_classify_core(req: PersonaRequest):
     """
     Classify a user's answers into the best persona using OpenAI,
     with strict prompt guardrails and server-side validations.
