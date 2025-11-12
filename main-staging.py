@@ -651,6 +651,17 @@ def _persona_classify_core(req: PersonaRequest):
                          "rationale": "Life stage indicates caregiving for a parent."}
             }
 
+    # Shortcut – Solo Ager (no spouse/partner, no child signals)
+    solo_signals = ["solo ager", "solo-ager", "living alone without close family"]
+    solo_flag = any(k in ls for k in solo_signals)
+    has_child_signal = ("child" in ls or "children" in ls)
+    is_singleish = any(k in w for k in ["single", "divorced", "separated"])
+    if solo_flag and not has_child_signal and is_singleish:
+        return {
+            "persona": {"id": "Solo Ager"},
+            "meta": {"id": "Solo Ager", "confidence": 0.95,
+                     "rationale": "Life stage indicates living alone without close family and no child signals."}
+        }
 
 
     # 4) Call OpenAI and force JSON output
