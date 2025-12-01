@@ -168,7 +168,7 @@ async def rewrite_with_tone(text, audience_block):
     reply = openai.ChatCompletion.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=400,
+        max_tokens=700,
         temperature=0
     )
 
