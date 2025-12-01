@@ -388,8 +388,9 @@ async def get_faq(request: Request):
                 f"Here are multiple answers and coaching tips from similar questions.\n\n"
                 f"1. Summarize the answers into one helpful response.\n"
                 f"2. Then write ONE Coaching Tip that is no more than 3 sentences long. It should be clear, supportive, and behaviorally insightful.\n"
-                f"3. 👉 Break all text into readable paragraphs of no more than 3 sentences each — especially the Coaching Tip.\n"
-                f"4. ❌ Do NOT include any links, downloads, or tools in the Coaching Tip. Those belong in the answer only.\n\n"
+                f"3. 👉 Break all text into readable paragraphs of no more than 3 sentences each.\n"
+                f"4. 👉 ALWAYS insert a blank line between paragraphs in the Coaching Tip.\n"
+                f"5. ❌ Do NOT include any links, downloads, or tools in the Coaching Tip. Those belong in the answer only.\n\n"
                 f"{combined}"
             )
 
