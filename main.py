@@ -201,10 +201,12 @@ async def get_faq(request: Request):
     audience_block = ""
     if requested_user == "professional":
         audience_block = (
-            "You are answering for a financial advisor helping clients.\n"
-            "Write in the advisor’s voice: use 'your client' not 'you'.\n"
-            "Prioritize communication strategies, behavioral cues, risk framing, and next-step guidance."
+            "You are answering for a financial advisor speaking directly to a client.\n"
+            "When you give example phrases, write them as the advisor talking to the client using 'you'.\n"
+            "Use 'your client' only when referring to the client in the third person, not in example scripts.\n"
+            "Prioritize communication strategies, behavioral cues, risk framing, and clear next steps the advisor can take."
         )
+
     elif requested_user == "consumer":
         audience_block = (
             "You are advising an individual or family.\n"
