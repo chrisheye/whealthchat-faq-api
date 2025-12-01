@@ -390,14 +390,20 @@ async def get_faq(request: Request):
                 f"{combined}"
             )
 
-            print("Sending prompt to OpenAI.")
-            reply = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=900,
-                temperature=0.5
-            )
-            return {"response": reply.choices[0].message.content.strip()}
+        print("Sending prompt to OpenAI.")
+        reply = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=900,
+            temperature=0.5
+        )
+
+        text = (reply.choices[0].message.content or "").strip()
+        print("LLM RAW LEN:", len(text))
+        print("LLM RAW TAIL:", text[-200:])
+
+        return {"response": text}
+
         else:
             print("❌ No high-quality vector match. Returning fallback message.")
 
