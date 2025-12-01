@@ -14,8 +14,6 @@ import time
 import logging
 import asyncio
 from contextlib import suppress
-from pydantic import BaseModel
-
 
 
 import json, os
@@ -170,7 +168,7 @@ async def rewrite_with_tone(text, audience_block):
     reply = openai.ChatCompletion.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=400,
+        max_tokens=700,
         temperature=0
     )
 
@@ -382,7 +380,7 @@ async def get_faq(request: Request):
 
             prompt = (
                 f"{SYSTEM_PROMPT}\n\n"
-                f"{audience_block}\n\n"   # <<< ensure professional/consumer tone is applied
+                f"{audience_block}\n\n"
                 f"Question: {safe_q}\n\n"
                 f"Here are multiple answers and coaching tips from similar questions.\n\n"
                 f"1. Summarize the answers into one helpful response.\n"
@@ -399,9 +397,16 @@ async def get_faq(request: Request):
                 max_tokens=900,
                 temperature=0.5
             )
-            return {"response": reply.choices[0].message.content.strip()}
+
+            text = (reply.choices[0].message.content or "").strip()
+            print("LLM RAW LEN:", len(text))
+            print("LLM RAW TAIL:", text[-200:])
+
+            return {"response": text}
+
         else:
             print("❌ No high-quality vector match. Returning fallback message.")
+
 
     except Exception as e:
         print("Vector-search error:", e)
@@ -467,36 +472,8 @@ def norm_answers(raw: dict) -> dict:
         "medical_conditions": s(raw.get("medical_conditions")),
     }
     
-from fastapi import Request
-
 @app.post("/persona-classify")
-async def persona_classify(request: Request):
-    data = await request.json()
-
-    # Accept either flat JSON or { "answers": {...}, "personasUrl": "..." }
-    if isinstance(data, dict) and "answers" in data:
-        answers = data.get("answers") or {}
-        personas_url = data.get("personasUrl") or data.get("personas_url")
-    else:
-        answers = {
-            "gender": data.get("gender"),
-            "age": data.get("age"),
-            "marital_status": data.get("marital_status"),
-            "life_stage": data.get("life_stage"),
-            "how_confident": data.get("how_confident"),
-            "planning_style": data.get("planning_style"),
-            "medical_conditions": data.get("medical_conditions"),
-        }
-        personas_url = data.get("personasUrl") or data.get("personas_url")
-
-# Shim to keep the rest of your code working as-is
-    class _Req: pass
-    req = _Req()
-    req.answers = answers
-    req.personasUrl = personas_url
-    return _persona_classify_core(req)
-
-def _persona_classify_core(req: PersonaRequest):
+def persona_classify(req: PersonaRequest):
     """
     Classify a user's answers into the best persona using OpenAI,
     with strict prompt guardrails and server-side validations.
@@ -651,17 +628,6 @@ def _persona_classify_core(req: PersonaRequest):
                          "rationale": "Life stage indicates caregiving for a parent."}
             }
 
-    # Shortcut – Solo Ager (no spouse/partner, no child signals)
-    solo_signals = ["solo ager", "solo-ager", "living alone without close family"]
-    solo_flag = any(k in ls for k in solo_signals)
-    has_child_signal = ("child" in ls or "children" in ls)
-    is_singleish = any(k in w for k in ["single", "divorced", "separated"])
-    if solo_flag and is_singleish:
-        return {
-            "persona": {"id": "Solo Ager"},
-            "meta": {"id": "Solo Ager", "confidence": 0.95,
-                     "rationale": "Life stage indicates living alone without close family and no child signals."}
-        }
 
 
     # 4) Call OpenAI and force JSON output
@@ -733,4 +699,3 @@ from fastapi.responses import JSONResponse
 @app.head("/", include_in_schema=False)
 def root():
     return JSONResponse({"status": "WhealthChat API is running"})
-
