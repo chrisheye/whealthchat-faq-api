@@ -380,7 +380,7 @@ async def get_faq(request: Request):
 
             prompt = (
                 f"{SYSTEM_PROMPT}\n\n"
-                f"{audience_block}\n\n"   # <<< ensure professional/consumer tone is applied
+                f"{audience_block}\n\n"
                 f"Question: {safe_q}\n\n"
                 f"Here are multiple answers and coaching tips from similar questions.\n\n"
                 f"1. Summarize the answers into one helpful response.\n"
@@ -390,22 +390,23 @@ async def get_faq(request: Request):
                 f"{combined}"
             )
 
-        print("Sending prompt to OpenAI.")
-        reply = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=900,
-            temperature=0.5
-        )
+            print("Sending prompt to OpenAI.")
+            reply = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=900,
+                temperature=0.5
+            )
 
-        text = (reply.choices[0].message.content or "").strip()
-        print("LLM RAW LEN:", len(text))
-        print("LLM RAW TAIL:", text[-200:])
+            text = (reply.choices[0].message.content or "").strip()
+            print("LLM RAW LEN:", len(text))
+            print("LLM RAW TAIL:", text[-200:])
 
-        return {"response": text}
+            return {"response": text}
 
         else:
             print("❌ No high-quality vector match. Returning fallback message.")
+
 
     except Exception as e:
         print("Vector-search error:", e)
