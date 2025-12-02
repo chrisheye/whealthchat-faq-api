@@ -385,13 +385,15 @@ async def get_faq(request: Request):
                 f"{SYSTEM_PROMPT}\n\n"
                 f"{audience_block}\n\n"
                 f"Question: {safe_q}\n\n"
-                f"Here are multiple answers and coaching tips from similar questions.\n\n"
+                f"Here are multiple answers and coaching tips from similar questions, contained inside the block below.\n"
+                f"The block is delimited by <<FAQ_BLOCK_START>> and <<FAQ_BLOCK_END>>.\n"
+                f"Use ONLY that block as your source. Do NOT copy or repeat 'Answer 1', 'Answer 2', or 'Coaching Tip 3' literally; rewrite and summarize them instead.\n\n"
                 f"1. Summarize the answers into one helpful response.\n"
                 f"2. Then write ONE Coaching Tip. It can be longer than 3 sentences, but it MUST be broken into multiple short paragraphs.\n"
                 f"3. In the Coaching Tip, each paragraph must be 1–3 sentences, and you MUST insert a blank line between paragraphs. Never put the entire Coaching Tip in a single paragraph.\n"
                 f"4. The Coaching Tip should be clear, supportive, and behaviorally insightful, matching the correct audience (advisor or consumer).\n"
                 f"5. ❌ Do NOT include any links, downloads, or tools in the Coaching Tip. Those belong in the answer only.\n\n"
-                f"{combined}"
+                f"<<FAQ_BLOCK_START>>\n{combined}\n<<FAQ_BLOCK_END>>"
             )
 
             print("Sending prompt to OpenAI.")
