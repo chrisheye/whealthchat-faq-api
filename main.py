@@ -201,18 +201,19 @@ async def get_faq(request: Request):
     audience_block = ""
     if requested_user == "professional":
         audience_block = (
-            "You are answering for a financial advisor speaking directly to a client.\n"
-            "When you give example phrases, write them as the advisor talking to the client using 'you'.\n"
-            "Use 'your client' only when referring to the client in the third person, not in example scripts.\n"
-            "Prioritize communication strategies, behavioral cues, risk framing, and clear next steps the advisor can take."
+            "You are advising a financial professional on how to talk with their clients.\n"
+            "Write directly TO THE ADVISOR using 'you' for the advisor and 'your client' or 'your clients' when referring to the people they serve.\n"
+            "Do NOT write as the advisor in the first person. Do NOT use 'I', 'we', or 'I'll' as if you are speaking to the client.\n"
+            "When you give example phrases, introduce them as guidance to the advisor, for example: 'You might say, \"I know this can be a tough subject…\"'.\n"
+            "Do NOT address the reader as if they are the client."
         )
-
     elif requested_user == "consumer":
         audience_block = (
             "You are advising an individual or family.\n"
             "Write directly to them using 'you'.\n"
             "Be clear, empathetic, and action-oriented with practical next steps."
         )
+
     # -------------------------------------------------------------------
 
     
@@ -384,12 +385,15 @@ async def get_faq(request: Request):
                 f"{SYSTEM_PROMPT}\n\n"
                 f"{audience_block}\n\n"
                 f"Question: {safe_q}\n\n"
-                f"Here are multiple answers and coaching tips from similar questions.\n\n"
+                f"Here are multiple answers and coaching tips from similar questions, contained inside the block below.\n"
+                f"The block is delimited by <<FAQ_BLOCK_START>> and <<FAQ_BLOCK_END>>.\n"
+                f"Use ONLY that block as your source. Do NOT copy or repeat 'Answer 1', 'Answer 2', or 'Coaching Tip 3' literally; rewrite and summarize them instead.\n\n"
                 f"1. Summarize the answers into one helpful response.\n"
-                f"2. Then write ONE Coaching Tip that is no more than 3 sentences long. It should be clear, supportive, and behaviorally insightful.\n"
-                f"3. 👉 Break all text into readable paragraphs of no more than 3 sentences each — especially the Coaching Tip.\n"
-                f"4. ❌ Do NOT include any links, downloads, or tools in the Coaching Tip. Those belong in the answer only.\n\n"
-                f"{combined}"
+                f"2. Then write ONE Coaching Tip. It can be longer than 3 sentences, but it MUST be broken into multiple short paragraphs.\n"
+                f"3. In the Coaching Tip, each paragraph must be 1–3 sentences, and you MUST insert a blank line between paragraphs. Never put the entire Coaching Tip in a single paragraph.\n"
+                f"4. The Coaching Tip should be clear, supportive, and behaviorally insightful, matching the correct audience (advisor or consumer).\n"
+                f"5. ❌ Do NOT include any links, downloads, or tools in the Coaching Tip. Those belong in the answer only.\n\n"
+                f"<<FAQ_BLOCK_START>>\n{combined}\n<<FAQ_BLOCK_END>>"
             )
 
             print("Sending prompt to OpenAI.")
