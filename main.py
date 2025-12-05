@@ -105,11 +105,12 @@ def sanitize_question_for_disallowed_brands(question: str, allowed_sources: list
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://whealthchat.ai", "https://staging.whealthchat.ai", "https://horizons.whealthchat.ai", "https://demo.whealthchat.ai","https://demo1.whealthchat.ai","https://pendleton.whealthchat.ai"],
+    allow_origin_regex=r"https://([a-z0-9-]+\.)?whealthchat\.ai",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 WEAVIATE_CLUSTER_URL = os.getenv("WEAVIATE_CLUSTER_URL")
 WEAVIATE_API_KEY = os.getenv("WEAVIATE_API_KEY")
