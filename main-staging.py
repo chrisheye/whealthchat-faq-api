@@ -178,6 +178,40 @@ async def rewrite_with_tone(text, audience_block, persona_block: str = ""):
 
     return reply.choices[0].message.content.strip()
 
+async def add_persona_note(base_text: str, audience_block: str, persona_block: str) -> str:
+    """
+    Generate a short add-on note that explains how the existing answer
+    applies to the current persona, without rewriting or removing content.
+    """
+    if not persona_block:
+        return ""
+
+    prompt = (
+        f"{audience_block}\n\n"
+        f"{persona_block}\n\n"
+        "You are given an existing answer about financial/retirement/health planning.\n"
+        "Do NOT rewrite or summarize the answer.\n"
+        "Instead, write a short add-on section that explains how this guidance applies\n"
+        "specifically to the persona described above.\n\n"
+        "Rules:\n"
+        "- Keep the original answer unchanged.\n"
+        "- Refer explicitly to the persona by name at least once.\n"
+        "- Focus on framing, emphasis, and next steps that fit this persona.\n"
+        "- 1–2 short paragraphs, no more than 5 sentences total.\n"
+        "- Do NOT add new tools or links that are not already in the answer.\n\n"
+        "EXISTING ANSWER:\n"
+        f"{base_text}\n"
+    )
+
+    reply = openai.ChatCompletion.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=300,
+        temperature=0.3
+    )
+
+    return reply.choices[0].message.content.strip()
+
 
 
 @app.post("/faq")
@@ -285,15 +319,17 @@ async def get_faq(request: Request):
                 print("✅ Exact match confirmed.")
                 resp_text = format_response(obj)
 
-                # If a persona is active, always run rewrite with persona.
-                # Otherwise, keep the old behavior (rewrite only when user = both).
-                if persona_block:
-                    resp_text = await rewrite_with_tone(resp_text, audience_block, persona_block)
-                elif row_user == "both":
+                # 1) Optional audience-only rewrite for 'both' (light tone tweak)
+                if row_user == "both" and not persona_block:
                     resp_text = await rewrite_with_tone(resp_text, audience_block)
 
-                return {"response": resp_text}
+                # 2) If a persona is active, ADD a persona note instead of rewriting
+                if persona_block:
+                    persona_note = await add_persona_note(resp_text, audience_block, persona_block)
+                    if persona_note:
+                        resp_text = f"{resp_text}\n\n{persona_note}"
 
+                return {"response": resp_text}
 
 
         print("⚠️ No strict match. Proceeding to vector search.")
