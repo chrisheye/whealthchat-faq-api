@@ -214,6 +214,31 @@ async def get_faq(request: Request):
             "Be clear, empathetic, and action-oriented with practical next steps."
         )
 
+    # ---- Persona context block ----
+    persona = body.get("persona") or {}
+    persona_block = ""
+    if isinstance(persona, dict) and persona:
+        name = (persona.get("client_name") or persona.get("name") or "").strip()
+        life_stage = (persona.get("life_stage") or "").strip()
+        primary = (persona.get("primary_concerns") or "").strip()
+        decision = (persona.get("decision_style") or "").strip()
+
+        if name:
+            persona_block = (
+                "You are answering for a specific client persona.\n"
+                f"Persona name: {name}.\n"
+                f"Life stage / situation: {life_stage or 'Not specified.'}\n"
+                f"Primary goals and concerns: {primary or 'Not specified.'}\n"
+                f"Decision style: {decision or 'Not specified.'}\n\n"
+                "When responding, you MUST:\n"
+                "- Refer explicitly to this persona by name at least once "
+                "  (for example: 'For Well-Prepared Planner, ...').\n"
+                "- Tailor your guidance, tone, and examples to this persona's "
+                "  life stage, goals, and decision style.\n"
+                "- Avoid generic, one-size-fits-all language. Explain why the "
+                "  advice is especially relevant for this persona.\n"
+            )
+
     # -------------------------------------------------------------------
 
     
@@ -384,6 +409,7 @@ async def get_faq(request: Request):
             prompt = (
                 f"{SYSTEM_PROMPT}\n\n"
                 f"{audience_block}\n\n"
+                f"{persona_block}\n"
                 f"Question: {safe_q}\n\n"
                 f"Here are multiple answers and coaching tips from similar questions, contained inside the block below.\n"
                 f"The block is delimited by <<FAQ_BLOCK_START>> and <<FAQ_BLOCK_END>>.\n"
@@ -705,3 +731,4 @@ from fastapi.responses import JSONResponse
 @app.head("/", include_in_schema=False)
 def root():
     return JSONResponse({"status": "WhealthChat API is running"})
+
