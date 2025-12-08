@@ -153,15 +153,19 @@ def version_check():
     return {"status": "Running", "message": "✅ CORS enabled version"}
 
 
-async def rewrite_with_tone(text, audience_block):
-    if not audience_block:
+async def rewrite_with_tone(text, audience_block, persona_block: str = ""):
+    # If there is no audience and no persona, just return the original text
+    if not audience_block and not persona_block:
         return text
 
     prompt = (
         f"{audience_block}\n\n"
-        "Rewrite the following answer to match this audience tone. "
-        "Do NOT change the meaning. Do NOT add new content. "
-        "Just adjust pronouns and framing.\n\n"
+        f"{persona_block}\n\n"
+        "Rewrite the following answer so it matches this audience and persona.\n"
+        "Keep all key facts and recommendations the same.\n"
+        "You MUST refer explicitly to the persona by name at least once "
+        "if a persona is provided.\n"
+        "Do NOT add new tools or links, and do NOT remove any that are already present.\n\n"
         f"ANSWER:\n{text}"
     )
 
@@ -173,6 +177,7 @@ async def rewrite_with_tone(text, audience_block):
     )
 
     return reply.choices[0].message.content.strip()
+
 
 
 @app.post("/faq")
@@ -280,11 +285,15 @@ async def get_faq(request: Request):
                 print("✅ Exact match confirmed.")
                 resp_text = format_response(obj)
 
-                # ✅ Rewrite tone ONLY when user = both
-                if row_user == "both":
+                # If a persona is active, always run rewrite with persona.
+                # Otherwise, keep the old behavior (rewrite only when user = both).
+                if persona_block:
+                    resp_text = await rewrite_with_tone(resp_text, audience_block, persona_block)
+                elif row_user == "both":
                     resp_text = await rewrite_with_tone(resp_text, audience_block)
 
                 return {"response": resp_text}
+
 
 
         print("⚠️ No strict match. Proceeding to vector search.")
