@@ -448,13 +448,11 @@ async def get_faq(request: Request):
                 coaching = obj.properties.get("coachingTip", "").strip()
                 blocks.append(f"Answer {i+1}:\n{answer}\n\nCoaching Tip {i+1}: {coaching}")
             combined = "\n\n---\n\n".join(blocks)
-            # ... after you build `combined` from blocks, right before prompt:
             safe_q = sanitize_question_for_disallowed_brands(raw_q, allowed)
 
             prompt = (
                 f"{SYSTEM_PROMPT}\n\n"
                 f"{audience_block}\n\n"
-                f"{persona_block}\n"
                 f"Question: {safe_q}\n\n"
                 f"Here are multiple answers and coaching tips from similar questions, contained inside the block below.\n"
                 f"The block is delimited by <<FAQ_BLOCK_START>> and <<FAQ_BLOCK_END>>.\n"
@@ -466,6 +464,7 @@ async def get_faq(request: Request):
                 f"5. ❌ Do NOT include any links, downloads, or tools in the Coaching Tip. Those belong in the answer only.\n\n"
                 f"<<FAQ_BLOCK_START>>\n{combined}\n<<FAQ_BLOCK_END>>"
             )
+
 
             print("Sending prompt to OpenAI.")
             reply = openai.ChatCompletion.create(
