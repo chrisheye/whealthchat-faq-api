@@ -264,18 +264,18 @@ async def get_faq(request: Request):
 
         if name:
             persona_block = (
-                "You are answering for a specific client persona.\n"
-                f"Persona name: {name}.\n"
-                f"Life stage / situation: {life_stage or 'Not specified.'}\n"
-                f"Primary goals and concerns: {primary or 'Not specified.'}\n"
-                f"Decision style: {decision or 'Not specified.'}\n\n"
-                "When responding, you MUST:\n"
-                "- Refer explicitly to this persona by name at least once "
-                "  (for example: 'For Well-Prepared Planner, ...').\n"
-                "- Tailor your guidance, tone, and examples to this persona's "
-                "  life stage, goals, and decision style.\n"
-                "- Avoid generic, one-size-fits-all language. Explain why the "
-                "  advice is especially relevant for this persona.\n"
+                "Persona context:\n"
+                f"- Persona name: {name}.\n"
+                f"- Life stage / situation: {life_stage or 'Not specified.'}\n"
+                f"- Primary goals and concerns: {primary or 'Not specified.'}\n"
+                f"- Decision style: {decision or 'Not specified.'}\n\n"
+                "Guidelines for using this persona:\n"
+                "- Keep the core guidance and recommendations the same as they would be for most clients.\n"
+                "- You may briefly mention the persona by name once "
+                "  (for example: 'For Well-Prepared Planner, ...'), but do not make the entire answer about the persona.\n"
+                "- Use the persona mainly to adjust tone, emphasis, and examples slightly.\n"
+                "- Do NOT introduce new topics that are not present in the underlying FAQ content.\n"
+                "- Do NOT remove or downplay general considerations that would apply to most clients.\n"
             )
 
     # -------------------------------------------------------------------
