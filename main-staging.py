@@ -383,18 +383,19 @@ async def get_faq(request: Request):
 
     # ---- Persona context block ----
     persona = body.get("persona") or {}
-    # --- Persona guard: ignore template/default personas sent by the frontend ---
-    persona_block = ""  # define once, before any persona logic
+    persona_block = ""  # define once
 
+    # Keep original query ONLY for detecting whether persona was explicitly applied
+    raw_q_original = (body.get("query") or "").strip()
+    persona_applied_in_query = raw_q_original.lower().startswith("persona context")
+
+    # Ignore template persona ONLY if it was NOT explicitly applied in the query
     if isinstance(persona, dict) and persona:
         pid = (persona.get("id") or "").strip().lower()
+        if ("|template" in pid or pid.endswith("template")) and not persona_applied_in_query:
+            persona = {}  # ignore default/template persona
 
-        # If the UI is sending a placeholder like "empowered widow|template",
-        # treat it as "no persona selected"
-        if "|template" in pid or pid.endswith("template"):
-            persona = {}          # ✅ ignore persona
-    
-    persona_block = ""
+    # Build persona_block only if persona survived the guard
     if isinstance(persona, dict) and persona:
         name = (persona.get("client_name") or persona.get("name") or "").strip()
         life_stage = (persona.get("life_stage") or "").strip()
@@ -410,8 +411,7 @@ async def get_faq(request: Request):
                 f"- Decision style: {decision or 'Not specified.'}\n\n"
                 "Guidelines for using this persona:\n"
                 "- Keep the core guidance and recommendations the same as they would be for most clients.\n"
-                "- You may briefly mention the persona by name once "
-                "  (for example: 'For Well-Prepared Planner, ...'), but do not make the entire answer about the persona.\n"
+                "- You may briefly mention the persona by name once, but do not make the entire answer about the persona.\n"
                 "- Use the persona mainly to adjust tone, emphasis, and examples slightly.\n"
                 "- Do NOT introduce new topics that are not present in the underlying FAQ content.\n"
                 "- Do NOT remove or downplay general considerations that would apply to most clients.\n"
@@ -443,6 +443,7 @@ async def get_faq(request: Request):
         )
         
         print("📦 exact sources:", [o.properties.get("source") for o in exact_res.objects])
+        print("🧪 persona_applied_in_query:", persona_applied_in_query, "persona_kept:", bool(persona), "pid:", (persona.get("id") if isinstance(persona, dict) else None))
 
         for obj in exact_res.objects:
             db_q = obj.properties.get("question", "").strip()
@@ -457,16 +458,17 @@ async def get_faq(request: Request):
                 print("✅ Exact match confirmed.")
                 resp_text = format_response(obj)
 
-                if persona:
-                    resp_text = insert_persona_into_answer(resp_text, persona_note(persona))
-
-                # Persona-aware rewrite (only when a real persona is present)
+                # Apply audience/persona rewrite first
                 if persona_block:
                     resp_text = await rewrite_with_tone(resp_text, audience_block, persona_block)
                 elif row_user == "both":
                     resp_text = await rewrite_with_tone(resp_text, audience_block)
 
+                # Then inject persona note last so it cannot be rewritten away
+                if persona:
+                    resp_text = insert_persona_into_answer(resp_text, persona_note(persona))
                 return {"response": resp_text}
+      
 
         print("⚠️ No strict match. Proceeding to vector search.")
 
