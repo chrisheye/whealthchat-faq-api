@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 SYSTEM_PROMPT = (
     "You are a helpful assistant. Respond using Markdown with consistent formatting.\n\n"
     "Answer the user's question clearly and supportively.\n"
-    "Then provide ONE **Coaching Tip** in bold using this exact label: **Coaching Tip:** (inline, not as a heading).\n\n"
+    "Then provide ONE Coaching Tip using this exact label: 💡 COACHING TIP: (inline, not as a heading).\n\n"
     "🚫 Do NOT include checklists, links, downloads, or tools in the Coaching Tip. Those belong in the main answer ONLY.\n"
     "✅ Preserve links and bold formatting in the main answer.\n"
     "✅ Include emojis if they appear in the source content.\n\n"
@@ -285,6 +285,18 @@ def persona_note(persona: dict) -> str:
         )
         return f"{p1}\n\n{p2}"
 
+    if "financially anxious millennial caregiver" in n or "millennial caregiver" in n:
+        p1 = (
+            f"For **{name}**, assume high baseline anxiety and low slack — money stress plus caregiver stress. "
+            "The priority is reducing shame and overwhelm while building a simple, repeatable next-step plan."
+        )
+        p2 = (
+            "Emphasize *stability first*: clarify the immediate cash-flow picture, define one small action for this week, "
+            "and separate “urgent” from “important” so everything doesn’t feel like an emergency. "
+            "A helpful opener is: “Let’s focus on the one decision that makes the next month easier, then we’ll build from there.”"
+        )
+        return f"{p1}\n\n{p2}"
+    
     if "self-directed" in n or "self directed" in n:
         p1 = (
             f"For **{name}**, lead with autonomy and options — they’ll disengage if it feels like a lecture. "
@@ -321,7 +333,7 @@ def insert_persona_into_answer(full_text: str, note: str) -> str:
     if not note:
         return full_text
 
-    marker = "\n\n**Coaching Tip:**"
+    marker = "\n\n💡 COACHING TIP:"
     if marker in full_text:
         answer_part, tip_part = full_text.split(marker, 1)
         return f"{answer_part}\n\n{note}{marker}{tip_part}"
@@ -648,7 +660,7 @@ def format_response(obj):
     answer = obj.properties.get("answer", "").strip()
     tip = obj.properties.get("coachingTip", "").strip()
     if tip:
-        return f"{answer}\n\n**Coaching Tip:** {tip}"
+        return f"{answer}\n\n💡 COACHING TIP {tip}"
     return answer
 
 
