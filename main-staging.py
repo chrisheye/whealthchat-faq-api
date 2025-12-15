@@ -212,7 +212,7 @@ async def add_persona_note(base_text: str, audience_block: str, persona_block: s
 
     return reply.choices[0].message.content.strip()
 
-def persona_lens_footer(persona: dict) -> str:
+def persona_note(persona: dict) -> str:
     if not isinstance(persona, dict) or not persona:
         return ""
 
@@ -224,7 +224,6 @@ def persona_lens_footer(persona: dict) -> str:
     primary = (persona.get("primary_concerns") or "").strip()
     decision = (persona.get("decision_style") or "").strip()
 
-    # clean bullets / html a bit
     def clean(s: str) -> str:
         s = re.sub(r"<br\s*/?>", " ", s, flags=re.IGNORECASE)
         s = s.replace("•", " ")
@@ -235,17 +234,26 @@ def persona_lens_footer(persona: dict) -> str:
     primary = clean(primary)
     decision = clean(decision)
 
-    # pick just a small hint (keep it short)
-    hint = ""
-    if decision:
-        hint = decision.split(".")[0][:140].strip()
-    elif primary:
-        hint = primary.split(".")[0][:140].strip()
+    # Keep this “natural” and not too long
+    bits = [b for b in [life_stage, primary, decision] if b]
+    context = ""
+    if bits:
+        context = bits[0]
+        # keep it short-ish
+        context = context.split(".")[0][:180].strip()
 
-    if hint:
-        return f"**Persona Lens:** For **{name}**, keep your approach consistent with the guidance above, and slightly emphasize: {hint}."
-    else:
-        return f"**Persona Lens:** For **{name}**, keep your approach consistent with the guidance above, and focus on pacing and clarity."
+    # 2 short paragraphs, ~4–6 sentences total
+    p1 = f"For **{name}**, the guidance above still applies — but the pacing and framing matter."
+    if context:
+        p1 += f" Given their situation ({context}), start by validating what feels hardest right now and clarify what a “good next step” looks like."
+
+    p2 = (
+        "Then narrow the conversation to one or two decisions they can act on this week, and make the next steps very concrete. "
+        "If emotions are running high, prioritize steadiness over speed: summarize what you heard, confirm agreement, and only then move to options."
+    )
+
+    return f"{p1}\n\n{p2}"
+
 
 
 @app.post("/faq")
@@ -371,7 +379,7 @@ async def get_faq(request: Request):
 
                 # 👇 ADD THIS (light persona footer, no rewriting)
                 if persona:
-                    foot = persona_lens_footer(persona)
+                    foot = persona_note(persona)
                     if foot:
                         resp_text = f"{resp_text}\n\n{foot}"
 
@@ -413,7 +421,7 @@ async def get_faq(request: Request):
                     resp_text = format_response(obj)
 
                     if persona:
-                        foot = persona_lens_footer(persona)
+                        foot = persona_note(persona)
                         if foot:
                             resp_text = f"{resp_text}\n\n{foot}"
 
