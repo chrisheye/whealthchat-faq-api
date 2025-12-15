@@ -443,17 +443,15 @@ async def get_faq(request: Request):
                 if src not in allowed_lower:
                     print("⛔ blocked exact-match source:", src, "allowed:", allowed)
                     continue
-
                 print("✅ Exact match confirmed.")
                 resp_text = format_response(obj)
-                resp_text = insert_persona_into_answer(resp_text, persona_note(persona))
 
+                if persona:
+                    resp_text = insert_persona_into_answer(resp_text, persona_note(persona))
 
-
-                # 1) Optional audience-only rewrite for 'both' (light tone tweak)
+                # Optional audience-only rewrite for 'both' (light tone tweak)
                 if row_user == "both" and not persona_block:
                     resp_text = await rewrite_with_tone(resp_text, audience_block)
-
 
                 return {"response": resp_text}
 
