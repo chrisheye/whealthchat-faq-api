@@ -254,6 +254,21 @@ def persona_note(persona: dict) -> str:
 
     return f"{p1}\n\n{p2}"
 
+def insert_persona_into_answer(full_text: str, note: str) -> str:
+    """
+    Inserts persona note into the main answer (before **Coaching Tip:**),
+    without changing the coaching tip content.
+    """
+    if not note:
+        return full_text
+
+    marker = "\n\n**Coaching Tip:**"
+    if marker in full_text:
+        answer_part, tip_part = full_text.split(marker, 1)
+        return f"{answer_part}\n\n{note}{marker}{tip_part}"
+    else:
+        # If there's no coaching tip, just append to the answer.
+        return f"{full_text}\n\n{note}"
 
 
 @app.post("/faq")
@@ -372,16 +387,14 @@ async def get_faq(request: Request):
 
                 print("✅ Exact match confirmed.")
                 resp_text = format_response(obj)
+                resp_text = insert_persona_into_answer(resp_text, persona_note(persona))
+
+
 
                 # 1) Optional audience-only rewrite for 'both' (light tone tweak)
                 if row_user == "both" and not persona_block:
                     resp_text = await rewrite_with_tone(resp_text, audience_block)
 
-                # 👇 ADD THIS (light persona footer, no rewriting)
-                if persona:
-                    foot = persona_note(persona)
-                    if foot:
-                        resp_text = f"{resp_text}\n\n{foot}"
 
                 return {"response": resp_text}
 
@@ -419,11 +432,8 @@ async def get_faq(request: Request):
                 if src_ok and user_ok:
                     print("✅ Exact-match override via vector results.")
                     resp_text = format_response(obj)
+                    resp_text = insert_persona_into_answer(resp_text, persona_note(persona))
 
-                    if persona:
-                        foot = persona_note(persona)
-                        if foot:
-                            resp_text = f"{resp_text}\n\n{foot}"
 
                     return {"response": resp_text}
 
