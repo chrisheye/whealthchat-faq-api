@@ -336,10 +336,10 @@ async def get_faq(request: Request):
                     resp_text = await rewrite_with_tone(resp_text, audience_block)
 
                 # 2) If a persona is active, ADD a persona note instead of rewriting
-                if persona_block:
-                    persona_note = await add_persona_note(resp_text, audience_block, persona_block)
-                    if persona_note:
-                        resp_text = f"{resp_text}\n\n{persona_note}"
+                # if persona_block:
+                #    persona_note = await add_persona_note(resp_text, audience_block, persona_block)
+                #    if persona_note:
+                #        resp_text = f"{resp_text}\n\n{persona_note}"
 
                 return {"response": resp_text}
 
