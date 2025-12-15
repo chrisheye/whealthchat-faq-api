@@ -460,8 +460,10 @@ async def get_faq(request: Request):
                 if persona:
                     resp_text = insert_persona_into_answer(resp_text, persona_note(persona))
 
-                # Optional audience-only rewrite for 'both' (light tone tweak)
-                if row_user == "both" and not persona_block:
+                # Persona-aware rewrite (only when a real persona is present)
+                if persona_block:
+                    resp_text = await rewrite_with_tone(resp_text, audience_block, persona_block)
+                elif row_user == "both":
                     resp_text = await rewrite_with_tone(resp_text, audience_block)
 
                 return {"response": resp_text}
