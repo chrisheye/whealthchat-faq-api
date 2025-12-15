@@ -383,6 +383,17 @@ async def get_faq(request: Request):
 
     # ---- Persona context block ----
     persona = body.get("persona") or {}
+    # --- Persona guard: ignore template/default personas sent by the frontend ---
+    persona_block = ""  # define once, before any persona logic
+
+    if isinstance(persona, dict) and persona:
+        pid = (persona.get("id") or "").strip().lower()
+
+        # If the UI is sending a placeholder like "empowered widow|template",
+        # treat it as "no persona selected"
+        if "|template" in pid or pid.endswith("template"):
+            persona = {}          # ✅ ignore persona
+    
     persona_block = ""
     if isinstance(persona, dict) and persona:
         name = (persona.get("client_name") or persona.get("name") or "").strip()
