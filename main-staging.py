@@ -212,6 +212,40 @@ async def add_persona_note(base_text: str, audience_block: str, persona_block: s
 
     return reply.choices[0].message.content.strip()
 
+def persona_lens_footer(persona: dict) -> str:
+    if not isinstance(persona, dict) or not persona:
+        return ""
+
+    name = (persona.get("client_name") or persona.get("name") or "").strip()
+    if not name:
+        return ""
+
+    life_stage = (persona.get("life_stage") or "").strip()
+    primary = (persona.get("primary_concerns") or "").strip()
+    decision = (persona.get("decision_style") or "").strip()
+
+    # clean bullets / html a bit
+    def clean(s: str) -> str:
+        s = re.sub(r"<br\s*/?>", " ", s, flags=re.IGNORECASE)
+        s = s.replace("•", " ")
+        s = re.sub(r"\s+", " ", s).strip()
+        return s
+
+    life_stage = clean(life_stage)
+    primary = clean(primary)
+    decision = clean(decision)
+
+    # pick just a small hint (keep it short)
+    hint = ""
+    if decision:
+        hint = decision.split(".")[0][:140].strip()
+    elif primary:
+        hint = primary.split(".")[0][:140].strip()
+
+    if hint:
+        return f"**Persona Lens:** For **{name}**, keep your approach consistent with the guidance above, and slightly emphasize: {hint}."
+    else:
+        return f"**Persona Lens:** For **{name}**, keep your approach consistent with the guidance above, and focus on pacing and clarity."
 
 
 @app.post("/faq")
@@ -335,14 +369,13 @@ async def get_faq(request: Request):
                 if row_user == "both" and not persona_block:
                     resp_text = await rewrite_with_tone(resp_text, audience_block)
 
-                # 2) If a persona is active, ADD a persona note instead of rewriting
-                # if persona_block:
-                #    persona_note = await add_persona_note(resp_text, audience_block, persona_block)
-                #    if persona_note:
-                #        resp_text = f"{resp_text}\n\n{persona_note}"
+                # 👇 ADD THIS (light persona footer, no rewriting)
+                if persona:
+                    foot = persona_lens_footer(persona)
+                    if foot:
+                        resp_text = f"{resp_text}\n\n{foot}"
 
                 return {"response": resp_text}
-
 
         print("⚠️ No strict match. Proceeding to vector search.")
 
@@ -378,6 +411,12 @@ async def get_faq(request: Request):
                 if src_ok and user_ok:
                     print("✅ Exact-match override via vector results.")
                     resp_text = format_response(obj)
+
+                    if persona:
+                        foot = persona_lens_footer(persona)
+                        if foot:
+                            resp_text = f"{resp_text}\n\n{foot}"
+
                     return {"response": resp_text}
 
         print("📦 vector sources:", [o.properties.get("source") for o in objects])
