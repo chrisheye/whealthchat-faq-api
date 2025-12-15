@@ -234,25 +234,84 @@ def persona_note(persona: dict) -> str:
     primary = clean(primary)
     decision = clean(decision)
 
-    # Keep this “natural” and not too long
-    bits = [b for b in [life_stage, primary, decision] if b]
-    context = ""
-    if bits:
-        context = bits[0]
-        # keep it short-ish
-        context = context.split(".")[0][:180].strip()
+    n = name.lower()
 
-    # 2 short paragraphs, ~4–6 sentences total
-    p1 = f"For **{name}**, the guidance above still applies — but the pacing and framing matter."
+    # --- persona-specific emphasis blocks ---
+    if "resilient partner" in n:
+        p1 = (
+            f"For **{name}**, focus on stabilizing the situation before you try to “optimize” anything. "
+            "They’re likely juggling medical uncertainty, caregiver logistics, and fear about long-term affordability."
+        )
+        p2 = (
+            "Start by identifying the *next 72 hours* decisions (care plan, who is coordinating, immediate cash-flow/bills). "
+            "Then move to *protections*: confirm decision authority (POA/healthcare proxy), locate key accounts/insurance, and identify who can help. "
+            "A helpful opener is: “Let’s separate what’s urgent this week from what we can plan calmly next.”"
+        )
+        return f"{p1}\n\n{p2}"
+
+    if "empowered widow" in n or "widow" in n:
+        p1 = (
+            f"For **{name}**, assume decision fatigue and grief are draining bandwidth even if they seem “on top of it.” "
+            "The priority is reducing overwhelm while rebuilding confidence as the sole decision-maker."
+        )
+        p2 = (
+            "Emphasize *simplification*: consolidate accounts, re-check beneficiaries/titles, and create a short monthly money rhythm. "
+            "Then shift to *security*: update trusted contacts, confirm the estate plan still reflects their intent, and set a 30–60 day decision timeline for any big changes. "
+            "A helpful opener is: “You don’t need to decide everything now — we’ll make a clean, safe plan in small steps.”"
+        )
+        return f"{p1}\n\n{p2}"
+
+    if "sandwich" in n:
+        p1 = (
+            f"For **{name}**, name the squeeze directly: competing obligations, guilt, and constant interruptions. "
+            "They need a plan that protects time and prevents “emergency-driven” decisions."
+        )
+        p2 = (
+            "Prioritize *boundaries + roles*: who handles parent care tasks, who handles kid-related costs, and what gets delegated. "
+            "Then focus on *cash-flow shock absorbers*: caregiving budget, insurance review, and a short list of “red flag” triggers that require action. "
+            "A helpful opener is: “Let’s design this so you’re not reinventing the plan every time there’s a new crisis.”"
+        )
+        return f"{p1}\n\n{p2}"
+
+    if "late starter" in n:
+        p1 = (
+            f"For **{name}**, keep the tone practical and non-shaming — urgency without panic. "
+            "They often need clarity on what matters most and a path that feels achievable."
+        )
+        p2 = (
+            "Emphasize *sequence*: stabilize spending, capture matches/benefits, then automate contributions and protect against major risks. "
+            "Use quick wins to build momentum (one account cleanup, one beneficiary update, one savings automation). "
+            "A helpful opener is: “We’ll focus on the highest-impact moves first — you can still make meaningful progress.”"
+        )
+        return f"{p1}\n\n{p2}"
+
+    if "self-directed" in n or "self directed" in n:
+        p1 = (
+            f"For **{name}**, lead with autonomy and options — they’ll disengage if it feels like a lecture. "
+            "They respond best to frameworks, tradeoffs, and clear decision criteria."
+        )
+        p2 = (
+            "Offer a short menu of paths with pros/cons, and invite them to choose the decision rule (cost, simplicity, flexibility, downside protection). "
+            "Then ask for a “definition of done” so you can turn analysis into action. "
+            "A helpful opener is: “If you had to pick one priority — simplicity, control, or downside protection — which wins?”"
+        )
+        return f"{p1}\n\n{p2}"
+
+    # --- fallback: still persona-aware using fields, not template-generic ---
+    context_bits = [b for b in [life_stage, primary, decision] if b]
+    context = (context_bits[0] if context_bits else "").split(".")[0][:220].strip()
+
+    p1 = f"For **{name}**, the guidance above applies — but it should match their situation and decision style."
     if context:
-        p1 += f" Given their situation ({context}), start by validating what feels hardest right now and clarify what a “good next step” looks like."
+        p1 += f" Based on what you know ({context}), reflect the *real constraint* first (time, confidence, stress, complexity) before moving to recommendations."
 
     p2 = (
-        "Then narrow the conversation to one or two decisions they can act on this week, and make the next steps very concrete. "
-        "If emotions are running high, prioritize steadiness over speed: summarize what you heard, confirm agreement, and only then move to options."
+        "To make this feel personal, name one priority you’re optimizing for (stability, simplicity, affordability, protection, or clarity), "
+        "and offer one concrete next step that fits their bandwidth right now. "
+        "If they feel stuck, reduce the choice set and confirm the next action in plain language."
     )
-
     return f"{p1}\n\n{p2}"
+
 
 def insert_persona_into_answer(full_text: str, note: str) -> str:
     """
