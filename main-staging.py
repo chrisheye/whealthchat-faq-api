@@ -218,6 +218,7 @@ async def add_persona_note(base_text: str, audience_block: str, persona_block: s
 async def get_faq(request: Request):
     body = await request.json()
     raw_q = body.get("query", "").strip()
+    print("📤 payload body:", body)  # <-- add this line
     print("🧾 RAW /faq body keys:", list(body.keys()))
     print("🧾 RAW query (first 200 chars):", raw_q[:200])
     print("🧾 RAW persona present?:", bool(body.get("persona")))
