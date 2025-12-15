@@ -503,7 +503,7 @@ async def get_faq(request: Request):
                     print("✅ Exact-match override via vector results.")
                     resp_text = format_response(obj)
                     resp_text = insert_persona_into_answer(resp_text, persona_note(persona))
-
+                    print("🧪 PERSONA NOTE ADDED:", bool(persona))
 
                     return {"response": resp_text}
 
