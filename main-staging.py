@@ -754,6 +754,7 @@ async def get_faq(request: Request):
 
             text = (reply.choices[0].message.content or "").strip()
             text = await finalize_response(text, "both", audience_block, persona, persona_block)
+            text = format_coaching_tip_paragraphs(text)
             return {"response": text}
 
             print("LLM RAW LEN:", len(text))
@@ -818,6 +819,37 @@ def enforce_coaching_tip_limits(text: str) -> str:
 
     cleaned_tip = "\n\n".join(cleaned_paragraphs)
     return f"{before}{marker} {cleaned_tip}"
+
+def format_coaching_tip_paragraphs(text: str) -> str:
+    """
+    Post-process ONLY the Coaching Tip so it's not a single blob.
+    Rules:
+    - Max 3 paragraphs
+    - Each paragraph max 3 sentences
+    - Does NOT modify the main answer
+    """
+    marker = "**💡 COACHING TIP:**"
+    if marker not in text:
+        return text
+
+    before, after = text.split(marker, 1)
+    tip = after.strip()
+
+    # If the tip already has paragraph breaks, keep them and just enforce limits.
+    if "\n\n" in tip:
+        paragraphs = [p.strip() for p in tip.split("\n\n") if p.strip()]
+    else:
+        # Otherwise: split into sentences and rebuild paragraphs (3 sentences each)
+        sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', tip) if s.strip()]
+        paragraphs = []
+        for i in range(0, len(sentences), 3):
+            paragraphs.append(" ".join(sentences[i:i+3]))
+
+    # Enforce max 3 paragraphs
+    paragraphs = paragraphs[:3]
+
+    cleaned = "\n\n".join(paragraphs).strip()
+    return f"{before}{marker} {cleaned}"
 
 
 @app.get("/faq-count")
