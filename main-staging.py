@@ -367,6 +367,27 @@ async def finalize_response(text: str, row_user: str, audience_block: str, perso
 
     return text
 
+def is_default_persona(p: dict) -> bool:
+    pid = (p.get("id") or "").strip().lower()
+    nm  = (p.get("name") or p.get("client_name") or "").strip().lower()
+
+    # common placeholder / “not selected” values
+    bad = {
+        "", "default", "default persona", "persona", "select persona", "choose persona",
+        "none", "no persona", "no_match", "unknown", "n/a"
+    }
+
+    if pid in bad or nm in bad:
+        return True
+
+    # catch UI-ish placeholders
+    if "select" in pid or "choose" in pid or "default" in pid:
+        return True
+    if "select" in nm or "choose" in nm or "default" in nm:
+        return True
+
+    return False
+
 
 @app.post("/faq")
 async def get_faq(request: Request):
@@ -421,6 +442,10 @@ async def get_faq(request: Request):
 
     # ---- Persona context block ----
     persona = body.get("persona") or {}
+    # ✅ Drop placeholder persona so answers don't start with “default”
+    if isinstance(persona, dict) and persona and is_default_persona(persona):
+    persona = {}
+
     persona_block = ""  # define once
 
     raw_q_original = (body.get("query") or "").strip()
