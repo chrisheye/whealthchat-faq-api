@@ -418,11 +418,7 @@ async def get_faq(request: Request):
                 "- Do NOT introduce new topics that are not present in the underlying FAQ content.\n"
                 "- Do NOT remove or downplay general considerations that would apply to most clients.\n"
             )
-
-
-    # -------------------------------------------------------------------
-
-    
+  
     if not raw_q:
         raise HTTPException(status_code=400, detail="Missing 'query' in request body.")
 
@@ -462,14 +458,17 @@ async def get_faq(request: Request):
                 resp_text = format_response(obj)
 
                 # Apply audience/persona rewrite first
-                if persona_block:
-                    resp_text = await rewrite_with_tone(resp_text, audience_block, persona_block)
+# ✅ Only inject persona_note when we DID NOT do a persona rewrite
+                if persona and not persona_block:
+                    resp_text = insert_persona_into_answer(resp_text, persona_note(persona))
+
                 elif row_user == "both":
                     resp_text = await rewrite_with_tone(resp_text, audience_block)
 
-                # Then inject persona note last so it cannot be rewritten away
-                if persona:
+                # ✅ Only inject persona_note when we DID NOT do a persona rewrite
+                if persona and not persona_block:
                     resp_text = insert_persona_into_answer(resp_text, persona_note(persona))
+
                 return {"response": resp_text}
       
 
