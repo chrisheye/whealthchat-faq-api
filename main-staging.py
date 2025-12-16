@@ -740,27 +740,53 @@ async def get_faq(request: Request):
                 f"3. Do NOT repeat persona background already stated in the main answer. Focus on advisor behavior.\n"
                 f"4. The Coaching Tip should be clear, supportive, and behaviorally insightful, matching the correct audience (advisor or consumer).\n"
                 f"5. ❌ Do NOT include any links, downloads, or tools in the Coaching Tip. Those belong in the answer only.\n\n"
+                f"OUTPUT FORMAT (STRICT): Return ONLY JSON with this schema:\n"
+                f'{{"answer_markdown":"...","coaching_tip_paragraphs":["p1","p2","p3"]}}\n'
+                f"Rules for coaching_tip_paragraphs:\n"
+                f"- MUST be an array of 1 to 3 strings.\n"
+                f"- Each string must be 1 to 3 sentences.\n"
+                f"- Do NOT include blank lines inside a paragraph string.\n"
+                f"- Do NOT include the label '💡 COACHING TIP' inside the paragraphs.\n\n"
                 f"<<FAQ_BLOCK_START>>\n{combined}\n<<FAQ_BLOCK_END>>"
             )
 
 
             print("Sending prompt to OpenAI.")
             reply = openai.ChatCompletion.create(
-                model="gpt-4",
+                model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=900,
-                temperature=0.5
+                temperature=0.3,
+                response_format={"type": "json_object"}
             )
+            # ✅ Extract JSON result
+            data = json.loads((reply.choices[0].message.content or "").strip())
 
-            text = (reply.choices[0].message.content or "").strip()
+            answer_md = (data.get("answer_markdown") or "").strip()
+            if not answer_md:
+                answer_md = "I'm not finding a strong enough match in my knowledge base to answer that clearly."
+            paras = data.get("coaching_tip_paragraphs") or []
+
+            # ✅ Enforce: 1–3 paragraphs, each 1–3 sentences (server-side guard)
+            cleaned_paras = []
+            for p in paras[:3]:
+                p = re.sub(r"\s+", " ", str(p).strip())
+                if not p:
+                    continue
+                sents = [s.strip() for s in re.split(r'(?<=[.!?])\s+', p) if s.strip()]
+                cleaned_paras.append(" ".join(sents[:3]))
+
+            coaching_tip = "\n\n".join(cleaned_paras).strip()
+
+            # ✅ Build final Markdown in your standard format
+            text = answer_md
+            if coaching_tip:
+                text = f"{answer_md}\n\n**💡 COACHING TIP:** {coaching_tip}"
+
+            # ✅ Apply persona injection (does NOT touch exact-match path)
             text = await finalize_response(text, "both", audience_block, persona, persona_block)
-            text = format_coaching_tip_paragraphs(text)
+
             return {"response": text}
-
-            print("LLM RAW LEN:", len(text))
-            print("LLM RAW TAIL:", text[-200:])
-            print("🧪 SUMMARIZE PATH persona_block:", bool(persona_block), "persona_note:", bool(persona_note(persona)))
-
 
 
         else:
