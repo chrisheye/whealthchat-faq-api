@@ -46,58 +46,37 @@ def and_filters(*filters):
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-# ---- Persona context block ----
-persona = body.get("persona") or {}
-persona_block = ""  # define once
+SYSTEM_PROMPT = (
+    "You are a helpful assistant. Respond using Markdown with consistent formatting.\n\n"
+    "Answer the user's question clearly and supportively.\n"
+    "Then provide ONE Coaching Tip using this exact label: **💡 COACHING TIP:** (inline, not as a heading).\n\n"
 
-raw_q_original = (body.get("query") or "").strip()
-persona_applied_in_query = raw_q_original.lower().startswith("persona context")
+    "STRICT COACHING TIP LIMITS:\n"
+    "- Maximum 2 paragraphs total.\n"
+    "- Each paragraph must be 1–2 sentences.\n"
+    "- Do NOT repeat persona background already stated in the main answer.\n"
+    "- Focus on advisor behavior, not client biography.\n"
+    "- Do NOT include planning steps (e.g., consolidation, beneficiaries, timelines) in the Coaching Tip.\n\n"
 
-def is_template_persona(p: dict) -> bool:
-    pid = (p.get("id") or "").strip().lower()
-    nm  = (p.get("name") or p.get("client_name") or "").strip().lower()
-    return ("template" in pid) or ("template" in nm) or ("|template" in pid)
+    "🚫 Do NOT include checklists, links, downloads, or tools in the Coaching Tip. Those belong in the main answer ONLY.\n"
+    "✅ Preserve links and bold formatting in the main answer.\n"
+    "✅ Include emojis if they appear in the source content.\n\n"
 
-def has_real_persona_fields(p: dict) -> bool:
-    # prevents “phantom persona” injection when a default object is passed
-    return any([
-        (p.get("client_name") or "").strip(),
-        (p.get("name") or "").strip(),
-        (p.get("life_stage") or "").strip(),
-        (p.get("primary_concerns") or "").strip(),
-        (p.get("decision_style") or "").strip(),
-    ])
+    "🔁 FORMATTING RULES:\n"
+    "1. Break both the main answer and the Coaching Tip into short, readable paragraphs.\n"
+    "2. Use line breaks between paragraphs.\n"
+    "3. No paragraph should be more than 3 sentences long.\n"
+    "4. NEVER place links or tools inside the Coaching Tip.\n\n"
 
-# Ignore template persona unless it was explicitly applied
-if isinstance(persona, dict) and persona:
-    if is_template_persona(persona) and not persona_applied_in_query:
-        persona = {}
+    "💬 TONE:\n"
+    "Use warm, encouraging language. Avoid robotic or clinical phrasing.\n"
+    "Acknowledge that many users are navigating emotional or sensitive topics.\n"
+    "Encourage users to seek help and **never worry alone** when appropriate.\n\n"
 
-# Build persona_block only if persona is real (after the guard)
-if isinstance(persona, dict) and persona and has_real_persona_fields(persona):
-    name = (persona.get("client_name") or persona.get("name") or persona.get("id") or "").strip()
-    life_stage = (persona.get("life_stage") or "").strip()
-    primary = (persona.get("primary_concerns") or "").strip()
-    decision = (persona.get("decision_style") or "").strip()
-
-    if name:
-        persona_block = (
-            "Persona context:\n"
-            f"- Persona name: {name}.\n"
-            f"- Life stage / situation: {life_stage or 'Not specified.'}\n"
-            f"- Primary goals and concerns: {primary or 'Not specified.'}\n"
-            f"- Decision style: {decision or 'Not specified.'}\n\n"
-            "Guidelines for using this persona:\n"
-            "- Keep the core guidance and recommendations the same as they would be for most clients.\n"
-            "- You may briefly mention the persona by name once, but do not make the entire answer about the persona.\n"
-            "- Use the persona mainly to adjust tone, emphasis, and examples slightly.\n"
-            "- Do NOT introduce new topics that are not present in the underlying FAQ content.\n"
-            "- Do NOT remove or downplay general considerations that would apply to most clients.\n"
-        )
-else:
-    # ensures persona is truly "off" downstream
-    persona = {}
-
+    "**IMPORTANT REMINDER:**\n"
+    "Summarize multiple tips into one helpful, well-structured Coaching Tip for the user.\n"
+    "If a long-term care calculator is mentioned, refer ONLY to the WhealthChat custom calculator."
+)
 
 
 def normalize(text):
@@ -425,12 +404,31 @@ async def get_faq(request: Request):
     persona = body.get("persona") or {}
     persona_block = ""  # define once
 
-    # Keep original query ONLY for detecting whether persona was explicitly applied
     raw_q_original = (body.get("query") or "").strip()
     persona_applied_in_query = raw_q_original.lower().startswith("persona context")
 
-    # Build persona_block only if persona survived the guard
+    def is_template_persona(p: dict) -> bool:
+        pid = (p.get("id") or "").strip().lower()
+        nm  = (p.get("name") or p.get("client_name") or "").strip().lower()
+        return ("template" in pid) or ("template" in nm) or ("|template" in pid)
+
+    def has_real_persona_fields(p: dict) -> bool:
+        # prevents “phantom persona” injection when a default object is passed
+        return any([
+            (p.get("client_name") or "").strip(),
+            (p.get("name") or "").strip(),
+            (p.get("life_stage") or "").strip(),
+            (p.get("primary_concerns") or "").strip(),
+            (p.get("decision_style") or "").strip(),
+        ])
+
+    # Ignore template persona unless it was explicitly applied
     if isinstance(persona, dict) and persona:
+        if is_template_persona(persona) and not persona_applied_in_query:
+            persona = {}
+
+    # Build persona_block only if persona is real (after the guard)
+    if isinstance(persona, dict) and persona and has_real_persona_fields(persona):
         name = (persona.get("client_name") or persona.get("name") or persona.get("id") or "").strip()
         life_stage = (persona.get("life_stage") or "").strip()
         primary = (persona.get("primary_concerns") or "").strip()
@@ -450,6 +448,10 @@ async def get_faq(request: Request):
                 "- Do NOT introduce new topics that are not present in the underlying FAQ content.\n"
                 "- Do NOT remove or downplay general considerations that would apply to most clients.\n"
             )
+    else:
+        # ensures persona is truly "off" downstream
+        persona = {}
+
   
     if not raw_q:
         raise HTTPException(status_code=400, detail="Missing 'query' in request body.")
@@ -633,8 +635,8 @@ async def get_faq(request: Request):
                 f"The block is delimited by <<FAQ_BLOCK_START>> and <<FAQ_BLOCK_END>>.\n"
                 f"Use ONLY that block as your source. Do NOT copy or repeat 'Answer 1', 'Answer 2', or 'Coaching Tip 3' literally; rewrite and summarize them instead.\n\n"
                 f"1. Summarize the answers into one helpful response.\n"
-                f"2. Then write ONE Coaching Tip. It can be longer than 3 sentences, but it MUST be broken into multiple short paragraphs.\n"
-                f"3. In the Coaching Tip, each paragraph must be 1–3 sentences, and you MUST insert a blank line between paragraphs. Never put the entire Coaching Tip in a single paragraph.\n"
+                f"2. Then write ONE Coaching Tip with STRICT LIMITS: max 2 paragraphs, each 1–2 sentences.\n"
+                f"3. Do NOT repeat persona background already stated in the main answer. Focus on advisor behavior.\n"
                 f"4. The Coaching Tip should be clear, supportive, and behaviorally insightful, matching the correct audience (advisor or consumer).\n"
                 f"5. ❌ Do NOT include any links, downloads, or tools in the Coaching Tip. Those belong in the answer only.\n\n"
                 f"<<FAQ_BLOCK_START>>\n{combined}\n<<FAQ_BLOCK_END>>"
@@ -650,14 +652,15 @@ async def get_faq(request: Request):
             )
 
             text = (reply.choices[0].message.content or "").strip()
-            # ✅ Apply persona + audience to non-exact-match answers
+
+            # ✅ Apply audience/persona processing to THE VARIABLE YOU RETURN (text)
             if persona_block:
                 text = await rewrite_with_tone(text, audience_block, persona_block)
             elif audience_block:
                 text = await rewrite_with_tone(text, audience_block)
 
-            # ✅ Inject persona note last (so the model can't “rewrite it away”)
-            if persona:
+            # ✅ Inject persona note ONLY when we did NOT do a persona rewrite
+            if persona and not persona_block:
                 text = insert_persona_into_answer(text, persona_note(persona))
 
             print("LLM RAW LEN:", len(text))
