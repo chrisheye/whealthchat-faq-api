@@ -444,7 +444,7 @@ async def get_faq(request: Request):
     persona = body.get("persona") or {}
     # ✅ Drop placeholder persona so answers don't start with “default”
     if isinstance(persona, dict) and persona and is_default_persona(persona):
-    persona = {}
+        persona = {}
 
     persona_block = ""  # define once
 
