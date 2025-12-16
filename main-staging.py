@@ -551,9 +551,9 @@ async def get_faq(request: Request):
                 resp_text = format_response(obj)
                 print("🧪 EXACT PATH persona_present:", bool(persona))
                 resp_text = await finalize_response(resp_text, row_user, audience_block, persona, persona_block)
+                resp_text = enforce_coaching_tip_limits(resp_text)
                 return {"response": resp_text}
 
-      
 
         print("⚠️ No strict match. Proceeding to vector search.")
 
@@ -590,7 +590,9 @@ async def get_faq(request: Request):
                     print("✅ Exact-match override via vector results.")
                     resp_text = format_response(obj)
                     resp_text = await finalize_response(resp_text, row_user, audience_block, persona, persona_block)
+                    resp_text = enforce_coaching_tip_limits(resp_text)
                     return {"response": resp_text}
+
 
 
         print("📦 vector sources:", [o.properties.get("source") for o in objects])
@@ -738,6 +740,33 @@ def format_response(obj):
     if tip:
         return f"{answer}\n\n**💡 COACHING TIP:** {tip}"
     return answer
+
+def enforce_coaching_tip_limits(text: str) -> str:
+    """
+    Enforce strict limits on the Coaching Tip ONLY.
+    Does not modify the main answer.
+    """
+    marker = "**💡 COACHING TIP:**"
+    if marker not in text:
+        return text
+
+    before, after = text.split(marker, 1)
+
+    # Split into paragraphs
+    paragraphs = [p.strip() for p in after.strip().split("\n\n") if p.strip()]
+
+    # Keep at most 2 paragraphs
+    paragraphs = paragraphs[:2]
+
+    cleaned_paragraphs = []
+    for p in paragraphs:
+        # Split into sentences
+        sentences = re.split(r'(?<=[.!?])\s+', p)
+        # Keep at most 2 sentences per paragraph
+        cleaned_paragraphs.append(" ".join(sentences[:2]))
+
+    cleaned_tip = "\n\n".join(cleaned_paragraphs)
+    return f"{before}{marker} {cleaned_tip}"
 
 
 @app.get("/faq-count")
