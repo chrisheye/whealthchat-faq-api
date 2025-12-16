@@ -404,6 +404,7 @@ async def get_faq(request: Request):
     print("🧾 RAW /faq body keys:", list(body.keys()))
     print("🧾 RAW query (first 200 chars):", raw_q[:200])
     print("🧾 RAW persona present?:", bool(body.get("persona")))
+    print("🧾 RAW persona payload:", body.get("persona"))
 
     if raw_q.startswith("{"):
         return {"response": "⚠️ Invalid query format. Please ask a plain language question."}
@@ -441,7 +442,21 @@ async def get_faq(request: Request):
         )
 
     # ---- Persona context block ----
-    persona = body.get("persona") or {}
+    persona = body.get("persona")
+
+    # HARD BACKEND GUARD: drop placeholder/default personas
+    if not isinstance(persona, dict):
+        persona = {}
+
+    pid = (persona.get("id") or "").strip().lower()
+    pname = (persona.get("name") or persona.get("client_name") or "").strip().lower()
+
+    if pid in {"", "default", "default persona", "no_match"}:
+        persona = {}
+
+    if "template" in pid or "template" in pname:
+        persona = {}
+
     # ✅ Drop placeholder persona so answers don't start with “default”
     if isinstance(persona, dict) and persona and is_default_persona(persona):
         persona = {}
