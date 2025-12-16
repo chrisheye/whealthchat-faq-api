@@ -365,7 +365,37 @@ async def finalize_response(text: str, row_user: str, audience_block: str, perso
     if isinstance(persona, dict) and persona:
         text = insert_persona_into_answer(text, persona_note(persona))
 
-    return text
+    return enforce_coaching_tip_rules(text)
+
+
+def enforce_coaching_tip_rules(text: str) -> str:
+    """
+    Enforces Coaching Tip constraints WITHOUT changing retrieval or logic.
+    Rules:
+    - Max 3 paragraphs
+    - Each paragraph max 3 sentences
+    """
+    marker = "**💡 COACHING TIP:**"
+    if marker not in text:
+        return text
+
+    before, after = text.split(marker, 1)
+
+    # Normalize paragraphs
+    paragraphs = [p.strip() for p in after.split("\n\n") if p.strip()]
+
+    trimmed_paragraphs = []
+    for p in paragraphs[:3]:  # max 3 paragraphs
+        sentences = re.split(r'(?<=[.!?])\s+', p)
+        trimmed = " ".join(sentences[:3])  # max 3 sentences
+        trimmed_paragraphs.append(trimmed)
+
+    cleaned_tip = "\n\n".join(trimmed_paragraphs)
+
+    return f"{before}{marker} {cleaned_tip}"
+
+
+
 
 def is_default_persona(p: dict) -> bool:
     pid = (p.get("id") or "").strip().lower()
@@ -592,8 +622,6 @@ async def get_faq(request: Request):
                     resp_text = await finalize_response(resp_text, row_user, audience_block, persona, persona_block)
                     resp_text = enforce_coaching_tip_limits(resp_text)
                     return {"response": resp_text}
-
-
 
         print("📦 vector sources:", [o.properties.get("source") for o in objects])
         print(f"🔍 Retrieved {len(objects)} vector matches:")
