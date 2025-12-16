@@ -212,7 +212,7 @@ def persona_note(persona: dict) -> str:
     if not isinstance(persona, dict) or not persona:
         return ""
 
-    name = (persona.get("client_name") or persona.get("name") or "").strip()
+    name = (persona.get("client_name") or persona.get("name") or persona.get("id") or "").strip()
     if not name:
         return ""
 
@@ -397,15 +397,9 @@ async def get_faq(request: Request):
     raw_q_original = (body.get("query") or "").strip()
     persona_applied_in_query = raw_q_original.lower().startswith("persona context")
 
-    # Ignore template persona ONLY if it was NOT explicitly applied in the query
-    if isinstance(persona, dict) and persona:
-        pid = (persona.get("id") or "").strip().lower()
-        if ("|template" in pid or pid.endswith("template")) and not persona_applied_in_query:
-            persona = {}  # ignore default/template persona
-
     # Build persona_block only if persona survived the guard
     if isinstance(persona, dict) and persona:
-        name = (persona.get("client_name") or persona.get("name") or "").strip()
+        name = (persona.get("client_name") or persona.get("name") or persona.get("id") or "").strip()
         life_stage = (persona.get("life_stage") or "").strip()
         primary = (persona.get("primary_concerns") or "").strip()
         decision = (persona.get("decision_style") or "").strip()
@@ -424,6 +418,7 @@ async def get_faq(request: Request):
                 "- Do NOT introduce new topics that are not present in the underlying FAQ content.\n"
                 "- Do NOT remove or downplay general considerations that would apply to most clients.\n"
             )
+
 
     # -------------------------------------------------------------------
 
@@ -624,8 +619,19 @@ async def get_faq(request: Request):
             )
 
             text = (reply.choices[0].message.content or "").strip()
+            # ✅ Apply persona + audience to non-exact-match answers
+            if persona_block:
+                text = await rewrite_with_tone(text, audience_block, persona_block)
+            elif audience_block:
+                text = await rewrite_with_tone(text, audience_block)
+
+            # ✅ Inject persona note last (so the model can't “rewrite it away”)
+            if persona:
+                text = insert_persona_into_answer(text, persona_note(persona))
+
             print("LLM RAW LEN:", len(text))
             print("LLM RAW TAIL:", text[-200:])
+            print("🧪 SUMMARIZE PATH persona_block:", bool(persona_block), "persona_note:", bool(persona_note(persona)))
 
             return {"response": text}
 
