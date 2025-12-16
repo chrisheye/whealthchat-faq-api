@@ -46,13 +46,10 @@ def and_filters(*filters):
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-
-
-
 SYSTEM_PROMPT = (
     "You are a helpful assistant. Respond using Markdown with consistent formatting.\n\n"
     "Answer the user's question clearly and supportively.\n"
-    "Then provide ONE Coaching Tip using this exact label: 💡 COACHING TIP: (inline, not as a heading).\n\n"
+    "Then provide ONE Coaching Tip using this exact label: **💡 COACHING TIP:**: (inline, not as a heading).\n\n"
     "🚫 Do NOT include checklists, links, downloads, or tools in the Coaching Tip. Those belong in the main answer ONLY.\n"
     "✅ Preserve links and bold formatting in the main answer.\n"
     "✅ Include emojis if they appear in the source content.\n\n"
@@ -73,7 +70,6 @@ SYSTEM_PROMPT = (
 
 def normalize(text):
     return re.sub(r"[^\w\s]", "", text.lower().strip())
-
 PROTECTED_BRANDS = {"pendleton", "pendleton square"}  # lowercase
 BRAND_TO_SOURCE = {
     "pendleton": "pendleton",
@@ -327,13 +323,13 @@ def persona_note(persona: dict) -> str:
 
 def insert_persona_into_answer(full_text: str, note: str) -> str:
     """
-    Inserts persona note into the main answer (before **Coaching Tip:**),
+    Inserts persona note into the main answer (before **💡 Coaching Tip:**),
     without changing the coaching tip content.
     """
     if not note:
         return full_text
 
-    marker = "\n\n💡 COACHING TIP:"
+    marker = "\n\n**💡 COACHING TIP:**"
     if marker in full_text:
         answer_part, tip_part = full_text.split(marker, 1)
         return f"{answer_part}\n\n{note}{marker}{tip_part}"
@@ -660,7 +656,7 @@ def format_response(obj):
     answer = obj.properties.get("answer", "").strip()
     tip = obj.properties.get("coachingTip", "").strip()
     if tip:
-        return f"{answer}\n\n💡 COACHING TIP {tip}"
+        return f"{answer}\n\n**💡 COACHING TIP:** {tip}"
     return answer
 
 
