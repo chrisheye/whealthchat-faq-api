@@ -432,14 +432,16 @@ async def get_faq(request: Request):
         return ("template" in pid) or ("template" in nm) or ("|template" in pid)
 
     def has_real_persona_fields(p: dict) -> bool:
-        # prevents “phantom persona” injection when a default object is passed
+        # Treat "id" as real so personas like {"id":"Resilient Partner"} are preserved
         return any([
+            (p.get("id") or "").strip(),
             (p.get("client_name") or "").strip(),
             (p.get("name") or "").strip(),
             (p.get("life_stage") or "").strip(),
             (p.get("primary_concerns") or "").strip(),
             (p.get("decision_style") or "").strip(),
         ])
+
 
     # Ignore template persona unless it was explicitly applied
     if isinstance(persona, dict) and persona:
