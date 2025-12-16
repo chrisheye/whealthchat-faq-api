@@ -528,11 +528,6 @@ async def get_faq(request: Request):
         ])
 
 
-    # Ignore template persona unless it was explicitly applied
-    if isinstance(persona, dict) and persona:
-        if is_template_persona(persona) and not persona_applied_in_query:
-            persona = {}
-
     # Build persona_block only if persona is real (after the guard)
     if isinstance(persona, dict) and persona and has_real_persona_fields(persona):
         name = (persona.get("client_name") or persona.get("name") or persona.get("id") or "").strip()
