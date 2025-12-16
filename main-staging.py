@@ -334,38 +334,55 @@ def persona_note(persona: dict) -> str:
 
 def insert_persona_into_answer(full_text: str, note: str) -> str:
     """
-    Inserts persona note into the main answer (before **💡 Coaching Tip:**),
-    without changing the coaching tip content.
+    Inserts persona note into the main answer (before the Coaching Tip label),
+    without changing the Coaching Tip content.
     """
     if not note:
         return full_text
 
-    marker = "\n\n**💡 COACHING TIP:**"
-    if marker in full_text:
-        answer_part, tip_part = full_text.split(marker, 1)
-        return f"{answer_part}\n\n{note}{marker}{tip_part}"
-    else:
-        # If there's no coaching tip, just append to the answer.
-        return f"{full_text}\n\n{note}"
+    # Support multiple label variants you may produce
+    markers = [
+        "\n\n**💡 COACHING TIP:**",
+        "\n\n💡 COACHING TIP:",
+        "\n\n**💡 COACHING TIP:** ",
+        "\n\n💡 COACHING TIP: ",
+    ]
 
-async def finalize_response(text: str, row_user: str, audience_block: str, persona: dict, persona_block: str) -> str:
+    for marker in markers:
+        if marker in full_text:
+            answer_part, tip_part = full_text.split(marker, 1)
+            return f"{answer_part}\n\n{note}{marker}{tip_part}"
+
+    # If no marker found, append note at end (fallback)
+    return f"{full_text}\n\n{note}"
+
+
+async def finalize_response(
+    text: str,
+    row_user: str,
+    audience_block: str,
+    persona: dict,
+    persona_block: str,
+    allow_rewrite: bool = True
+) -> str:
     """
-    Apply audience tone + persona consistently across ALL paths.
-    - If the FAQ row is 'both', rewrite for the requested audience (and persona if available).
-    - Always insert a short persona note into the main answer when persona is present.
+    - allow_rewrite=False: do NOT call OpenAI rewrite (used for exact-match path).
+    - Always insert persona note into the main answer when persona is present.
     """
-    # 1) Rewrite tone (only when the DB content is "both")
-    if (row_user or "").strip().lower() == "both":
+
+    # 1) Rewrite tone ONLY if allowed (never for exact matches)
+    if allow_rewrite and (row_user or "").strip().lower() == "both":
         if persona_block:
             text = await rewrite_with_tone(text, audience_block, persona_block)
         elif audience_block:
             text = await rewrite_with_tone(text, audience_block)
 
-    # 2) Always inject persona note when persona exists (regardless of persona_block)
+    # 2) Always inject persona note when persona exists
     if isinstance(persona, dict) and persona:
         text = insert_persona_into_answer(text, persona_note(persona))
 
-    return enforce_coaching_tip_rules(text)
+    return text
+
 
 
 def enforce_coaching_tip_rules(text: str) -> str:
@@ -580,9 +597,12 @@ async def get_faq(request: Request):
                 print("✅ Exact match confirmed.")
                 resp_text = format_response(obj)
                 print("🧪 EXACT PATH persona_present:", bool(persona))
-                resp_text = await finalize_response(resp_text, row_user, audience_block, persona, persona_block)
-                resp_text = enforce_coaching_tip_limits(resp_text)
+                resp_text = await finalize_response(
+                    resp_text, row_user, audience_block, persona, persona_block,
+                    allow_rewrite=False
+                )
                 return {"response": resp_text}
+
 
 
         print("⚠️ No strict match. Proceeding to vector search.")
@@ -619,9 +639,12 @@ async def get_faq(request: Request):
                 if src_ok and user_ok:
                     print("✅ Exact-match override via vector results.")
                     resp_text = format_response(obj)
-                    resp_text = await finalize_response(resp_text, row_user, audience_block, persona, persona_block)
-                    resp_text = enforce_coaching_tip_limits(resp_text)
+                    resp_text = await finalize_response(
+                        resp_text, row_user, audience_block, persona, persona_block,
+                        allow_rewrite=False
+                    )
                     return {"response": resp_text}
+
 
         print("📦 vector sources:", [o.properties.get("source") for o in objects])
         print(f"🔍 Retrieved {len(objects)} vector matches:")
