@@ -551,6 +551,7 @@ async def get_faq(request: Request):
                     continue
                 print("✅ Exact match confirmed.")
                 resp_text = format_response(obj)
+                print("🧪 EXACT PATH persona_present:", bool(persona))
                 resp_text = await finalize_response(resp_text, row_user, audience_block, persona, persona_block)
                 return {"response": resp_text}
 
