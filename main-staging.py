@@ -334,27 +334,33 @@ def persona_note(persona: dict) -> str:
 
 def insert_persona_into_answer(full_text: str, note: str) -> str:
     """
-    Inserts persona note into the main answer (before the Coaching Tip label),
-    without changing the Coaching Tip content.
+    Insert persona note EARLY in the main answer (after the first paragraph),
+    and always BEFORE the Coaching Tip label if present.
     """
     if not note:
         return full_text
 
-    # Support multiple label variants you may produce
-    markers = [
-        "\n\n**💡 COACHING TIP:**",
-        "\n\n💡 COACHING TIP:",
-        "\n\n**💡 COACHING TIP:** ",
-        "\n\n💡 COACHING TIP: ",
-    ]
+    marker = "**💡 COACHING TIP:**"
+    if marker in full_text:
+        answer_part, tip_part = full_text.split(marker, 1)
 
-    for marker in markers:
-        if marker in full_text:
-            answer_part, tip_part = full_text.split(marker, 1)
-            return f"{answer_part}\n\n{note}{marker}{tip_part}"
+        # split main answer into paragraphs
+        paras = [p for p in answer_part.split("\n\n") if p.strip()]
 
-    # If no marker found, append note at end (fallback)
+        if len(paras) >= 1:
+            # insert after first paragraph
+            new_answer = "\n\n".join([paras[0], note] + paras[1:])
+        else:
+            new_answer = f"{answer_part}\n\n{note}"
+
+        return f"{new_answer}\n\n{marker}{tip_part}"
+
+    # no coaching tip marker: still insert after first paragraph
+    paras = [p for p in full_text.split("\n\n") if p.strip()]
+    if len(paras) >= 1:
+        return "\n\n".join([paras[0], note] + paras[1:])
     return f"{full_text}\n\n{note}"
+
 
 
 async def finalize_response(
@@ -754,6 +760,9 @@ async def get_faq(request: Request):
                 temperature=0.3,
                 response_format={"type": "json_object"}
             )
+            
+            print("🧾 OpenAI raw JSON (first 500):", (reply.choices[0].message.content or "")[:500])
+            
             # ✅ Extract JSON result
             data = json.loads((reply.choices[0].message.content or "").strip())
 
@@ -1065,8 +1074,6 @@ def persona_classify(req: PersonaRequest):
                 "meta": {"id": "Responsible Supporter", "confidence": 0.9,
                          "rationale": "Life stage indicates caregiving for a parent."}
             }
-
-
 
     # 4) Call OpenAI and force JSON output
     try:
