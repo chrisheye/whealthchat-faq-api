@@ -662,16 +662,6 @@ async def get_faq(request: Request):
             text = await finalize_response(text, "both", audience_block, persona, persona_block)
             return {"response": text}
 
-            # ✅ Apply audience/persona processing to THE VARIABLE YOU RETURN (text)
-            if persona_block:
-                text = await rewrite_with_tone(text, audience_block, persona_block)
-            elif audience_block:
-                text = await rewrite_with_tone(text, audience_block)
-
-            # ✅ Inject persona note ONLY when we did NOT do a persona rewrite
-            if persona and not persona_block:
-                text = insert_persona_into_answer(text, persona_note(persona))
-
             print("LLM RAW LEN:", len(text))
             print("LLM RAW TAIL:", text[-200:])
             print("🧪 SUMMARIZE PATH persona_block:", bool(persona_block), "persona_note:", bool(persona_note(persona)))
