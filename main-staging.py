@@ -371,22 +371,22 @@ def is_default_persona(p: dict) -> bool:
     pid = (p.get("id") or "").strip().lower()
     nm  = (p.get("name") or p.get("client_name") or "").strip().lower()
 
-    # common placeholder / “not selected” values
+    # Explicit placeholders only
     bad = {
-        "", "default", "default persona", "persona", "select persona", "choose persona",
-        "none", "no persona", "no_match", "unknown", "n/a"
+        "", "default", "default persona", "persona",
+        "select persona", "choose persona",
+        "none", "no persona", "unknown", "n/a"
     }
 
+    # 🚫 DO NOT treat "|template" as default
     if pid in bad or nm in bad:
         return True
 
-    # catch UI-ish placeholders
-    if "select" in pid or "choose" in pid or "default" in pid:
-        return True
-    if "select" in nm or "choose" in nm or "default" in nm:
+    if pid.startswith("select") or nm.startswith("select"):
         return True
 
     return False
+
 
 
 @app.post("/faq")
@@ -451,11 +451,9 @@ async def get_faq(request: Request):
     pid = (persona.get("id") or "").strip().lower()
     pname = (persona.get("name") or persona.get("client_name") or "").strip().lower()
 
-    if pid in {"", "default", "default persona", "no_match"}:
+    if pid in {"", "default", "default persona"}:
         persona = {}
 
-    if "template" in pid or "template" in pname:
-        persona = {}
 
     # ✅ Drop placeholder persona so answers don't start with “default”
     if isinstance(persona, dict) and persona and is_default_persona(persona):
