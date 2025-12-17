@@ -131,49 +131,66 @@ def persona_tagline(persona: dict) -> str:
     if not name:
         return ""
 
-    life_stage = (persona.get("life_stage") or "").strip().lower()
-    primary = (persona.get("primary_concerns") or "").strip().lower()
-    decision = (persona.get("decision_style") or "").strip().lower()
+    key = name.strip().lower()
 
-    def pick_hint():
-        if any(k in decision for k in ["analy", "research", "numbers", "data"]):
-            return (
-                "Lead with tradeoffs and a clear decision rule.",
-                "Offer options, then ask which constraint matters most."
-            )
-        if any(k in decision for k in ["anx", "overwhelm", "fear", "stress"]):
-            return (
-                "Reduce cognitive load by narrowing the decision to one clear step.",
-                "Name what can wait so everything doesn’t feel urgent."
-            )
-        if any(k in decision for k in ["avoid", "delay", "procrast", "reluct"]):
-            return (
-                "Lower the activation energy with a small default action.",
-                "Momentum matters more than optimization right now."
-            )
-        if any(k in life_stage for k in ["care", "caregiv", "hospital", "diagnos"]) or any(k in primary for k in ["care", "ltc", "health"]):
-            return (
-                "Stabilize the situation first before optimizing.",
-                "Protect cash flow and decision authority early."
-            )
-        if "widow" in life_stage or "widow" in primary:
-            return (
-                "Slow the pace and simplify before making irreversible decisions.",
-                "Confidence grows when progress is visible and contained."
-            )
-        if any(k in life_stage for k in ["business", "exit", "sale"]) or any(k in primary for k in ["tax", "liquidity", "valuation"]):
-            return (
-                "Frame the discussion around scenarios and timing tradeoffs.",
-                "Stress-test how outcomes affect lifestyle and legacy."
-            )
+    TAGLINES = {
+        "resilient partner": (
+            "stabilize the situation first before optimizing.",
+            "protect cash flow and decision authority early."
+        ),
+        "empowered widow": (
+            "slow the pace and reduce decision overload.",
+            "build confidence with small, visible wins."
+        ),
+        "self-directed investor": (
+            "lead with tradeoffs and clear decision criteria.",
+            "offer options and let them choose the rule."
+        ),
+        "late starter": (
+            "keep urgency without shame.",
+            "focus on the highest-impact moves first."
+        ),
+        "delegator spouse": (
+            "create psychological safety and simplicity.",
+            "define the few decisions they must confidently own."
+        ),
+        "business owner nearing exit": (
+            "anchor everything to exit timing and uncertainty.",
+            "pressure-test outcomes and convert proceeds into income."
+        ),
+        "henry (high earner, not rich yet)": (
+            "normalize the income–wealth gap and reduce lifestyle creep.",
+            "use automation and guardrails to protect progress."
+        ),
+        "financially anxious millennial caregiver": (
+            "reduce overwhelm by separating urgent vs. important.",
+            "focus on stability and one small next step this week."
+        ),
+        "solo ager": (
+            "prioritize resilience and decision continuity.",
+            "build trusted contacts and an incapacity playbook early."
+        ),
+        "diminished decision-maker": (
+            "protect autonomy while reducing risk.",
+            "simplify choices and put guardrails in place early."
+        ),
+        "responsible supporter": (
+            "name the emotional bind and clarify roles.",
+            "support independence while reducing avoidable risks."
+        ),
+        "well-prepared planner": (
+            "treat this as integration and stress-testing.",
+            "align professionals and run a few “what if” scenarios."
+        ),
+    }
 
-        return (
-            "Keep the framing practical and grounded.",
-            "End with one clear next step they can act on."
-        )
+    s1, s2 = TAGLINES.get(
+        key,
+        ("keep the framing aligned with their decision style.", "offer one practical next step that fits their bandwidth.")
+    )
 
-    s1, s2 = pick_hint()
-    return f"*For the **{name}**, {s1.lower()} {s2.lower()}*"
+    return f"*For the **{name}**, {s1} {s2}*"
+
 
 
 # --- APP SETUP ---
