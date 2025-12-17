@@ -714,8 +714,7 @@ async def get_faq(request: Request):
                     raw_q=raw_q,
                     allow_rewrite=False
                 )
-
-                )
+                
                 return {"response": resp_text}
 
 
