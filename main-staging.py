@@ -93,8 +93,8 @@ def should_show_persona_note(persona: dict, raw_q: str) -> bool:
     q = (raw_q or "").lower()
 
     high_stakes_terms = [
-        "care", "caregiving", "hospital", "stroke", "dementia", "alz",
-        "incapac", "poa", "proxy", "guardrail", "long-term care", "ltc"
+        "caregiving", "hospital", "stroke", "dementia", "alz",
+        "incapac", "poa", "proxy", "diminshed", "long-term care", "ltc"
     ]
 
     matched = [t for t in high_stakes_terms if t in q]
@@ -714,6 +714,7 @@ async def get_faq(request: Request):
                     raw_q=raw_q,
                     allow_rewrite=False
                 )
+
                 
                 return {"response": resp_text}
 
@@ -758,6 +759,7 @@ async def get_faq(request: Request):
                         raw_q=raw_q,
                         allow_rewrite=False
                     )
+
 
                     return {"response": resp_text}
 
@@ -903,7 +905,10 @@ async def get_faq(request: Request):
                 text = f"{answer_md}\n\n**💡 COACHING TIP:** {coaching_tip}"
 
             # ✅ Apply persona injection (does NOT touch exact-match path)
-            text = await finalize_response(text, "both", audience_block, persona, persona_block)
+            text = await finalize_response(
+                text, "both", audience_block, persona, persona_block,
+                raw_q=raw_q
+            )
 
             return {"response": text}
 
