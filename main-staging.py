@@ -130,8 +130,51 @@ def persona_tagline(persona: dict) -> str:
     name = (persona.get("client_name") or persona.get("name") or persona.get("id") or "").strip()
     if not name:
         return ""
-    # one short sentence, not the “high-stakes” script
-    return f"*Note for **{name}**: keep the framing aligned with their situation and decision style — aim for clarity and one practical next step.*"
+
+    life_stage = (persona.get("life_stage") or "").strip().lower()
+    primary = (persona.get("primary_concerns") or "").strip().lower()
+    decision = (persona.get("decision_style") or "").strip().lower()
+
+    def pick_hint():
+        if any(k in decision for k in ["analy", "research", "numbers", "data"]):
+            return (
+                "Lead with tradeoffs and a clear decision rule.",
+                "Offer options, then ask which constraint matters most."
+            )
+        if any(k in decision for k in ["anx", "overwhelm", "fear", "stress"]):
+            return (
+                "Reduce cognitive load by narrowing the decision to one clear step.",
+                "Name what can wait so everything doesn’t feel urgent."
+            )
+        if any(k in decision for k in ["avoid", "delay", "procrast", "reluct"]):
+            return (
+                "Lower the activation energy with a small default action.",
+                "Momentum matters more than optimization right now."
+            )
+        if any(k in life_stage for k in ["care", "caregiv", "hospital", "diagnos"]) or any(k in primary for k in ["care", "ltc", "health"]):
+            return (
+                "Stabilize the situation first before optimizing.",
+                "Protect cash flow and decision authority early."
+            )
+        if "widow" in life_stage or "widow" in primary:
+            return (
+                "Slow the pace and simplify before making irreversible decisions.",
+                "Confidence grows when progress is visible and contained."
+            )
+        if any(k in life_stage for k in ["business", "exit", "sale"]) or any(k in primary for k in ["tax", "liquidity", "valuation"]):
+            return (
+                "Frame the discussion around scenarios and timing tradeoffs.",
+                "Stress-test how outcomes affect lifestyle and legacy."
+            )
+
+        return (
+            "Keep the framing practical and grounded.",
+            "End with one clear next step they can act on."
+        )
+
+    s1, s2 = pick_hint()
+    return f"*Note for **{name}**: {s1} {s2}*"
+
 
 
 # --- APP SETUP ---
