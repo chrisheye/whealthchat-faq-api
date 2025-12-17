@@ -476,8 +476,10 @@ async def finalize_response(
     audience_block: str,
     persona: dict,
     persona_block: str,
+    raw_q: str = "",
     allow_rewrite: bool = True
 ) -> str:
+
     """
     - allow_rewrite=False: do NOT call OpenAI rewrite (used for exact-match path).
     - Always insert persona note into the main answer when persona is present.
@@ -491,8 +493,9 @@ async def finalize_response(
             text = await rewrite_with_tone(text, audience_block)
 
     # 2) Always inject persona note when persona exists
-    if isinstance(persona, dict) and persona and should_show_persona_note(persona, text):
+    if isinstance(persona, dict) and persona and should_show_persona_note(persona, raw_q):
         text = insert_persona_into_answer(text, persona_note(persona))
+
 
 
     return text
@@ -708,7 +711,10 @@ async def get_faq(request: Request):
                 print("🧪 EXACT PATH persona_present:", bool(persona))
                 resp_text = await finalize_response(
                     resp_text, row_user, audience_block, persona, persona_block,
+                    raw_q=raw_q,
                     allow_rewrite=False
+                )
+
                 )
                 return {"response": resp_text}
 
@@ -750,8 +756,10 @@ async def get_faq(request: Request):
                     resp_text = format_response(obj)
                     resp_text = await finalize_response(
                         resp_text, row_user, audience_block, persona, persona_block,
+                        raw_q=raw_q,
                         allow_rewrite=False
                     )
+
                     return {"response": resp_text}
 
 
