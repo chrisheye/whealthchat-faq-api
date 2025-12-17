@@ -128,59 +128,61 @@ def sanitize_question_for_disallowed_brands(question: str, allowed_sources: list
 
 def persona_tagline(persona: dict) -> str:
     name = (persona.get("client_name") or persona.get("name") or persona.get("id") or "").strip()
+    name = name.strip("* ").strip()
     if not name:
         return ""
+
 
     key = name.strip().lower()
 
     TAGLINES = {
         "resilient partner": (
-            "stabilize the situation first before optimizing.",
-            "protect cash flow and decision authority early."
+            "stabilize the situation first before seeking to optimize.",
+            "Protect cash flow and decision authority early."
         ),
         "empowered widow": (
-            "slow the pace and reduce decision overload.",
-            "build confidence with small, visible wins."
+            "slow the pace and to reduce decision-making overload.",
+            "Build her confidence with small, visible wins."
         ),
         "self-directed investor": (
             "lead with tradeoffs and clear decision criteria.",
-            "offer options and let them choose the rule."
+            "Offer options and let them choose the rule."
         ),
         "late starter": (
             "keep urgency without shame.",
-            "focus on the highest-impact moves first."
+            "Focus on the highest-impact moves first."
         ),
         "delegator spouse": (
             "create psychological safety and simplicity.",
-            "define the few decisions they must confidently own."
+            "Define the few decisions they must confidently own."
         ),
         "business owner nearing exit": (
             "anchor everything to exit timing and uncertainty.",
-            "pressure-test outcomes and convert proceeds into income."
+            "Pressure-test outcomes and convert proceeds into income."
         ),
         "henry (high earner, not rich yet)": (
             "normalize the income–wealth gap and reduce lifestyle creep.",
-            "use automation and guardrails to protect progress."
+            "Use automation and guardrails to protect progress."
         ),
         "financially anxious millennial caregiver": (
             "reduce overwhelm by separating urgent vs. important.",
-            "focus on stability and one small next step this week."
+            "Focus on stability and one small next step at a time."
         ),
         "solo ager": (
-            "prioritize resilience and decision continuity.",
-            "build trusted contacts and an incapacity playbook early."
+            "prioritize resilience and decision-making continuity.",
+            "Identify trusted contacts and put in place plans to protect them from major health events and costs."
         ),
         "diminished decision-maker": (
-            "protect autonomy while reducing risk.",
-            "simplify choices and put guardrails in place early."
+            "strive to protect their autonomy while reducing financial risk.",
+            "Simplify choices, put guardrails in place early, and seek to involve family members in your conversations."
         ),
         "responsible supporter": (
             "name the emotional bind and clarify roles.",
-            "support independence while reducing avoidable risks."
+            "Support independence while reducing avoidable risks."
         ),
         "well-prepared planner": (
             "treat this as integration and stress-testing.",
-            "align professionals and run a few “what if” scenarios."
+            "Align professionals and run a few “what if” scenarios."
         ),
     }
 
