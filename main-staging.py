@@ -304,6 +304,18 @@ def persona_note(persona: dict) -> str:
         )
         return f"{p1}\n\n{p2}"
     
+    if "well-prepared planner" in n or "well prepared planner" in n:
+        p1 = (
+            f"For **{name}**, assume they’re already doing many things right — they value integration, "
+            "coordination across professionals, and optimization at the margins."
+        )
+        p2 = (
+            "Focus on *playbooks + alignment*: confirm roles across advisor/CPA/attorney, run a document and beneficiary audit, "
+            "and pressure-test the plan with a few “what if” scenarios (health event, market drawdown, caregiver need). "
+            "A helpful opener is: “You’ve built a strong foundation — let’s make sure it’s fully integrated and resilient under stress.”"
+        )
+        return f"{p1}\n\n{p2}"
+
     if "self-directed" in n or "self directed" in n:
         p1 = (
             f"For **{name}**, lead with autonomy and options — they’ll disengage if it feels like a lecture. "
@@ -315,6 +327,81 @@ def persona_note(persona: dict) -> str:
             "A helpful opener is: “If you had to pick one priority — simplicity, control, or downside protection — which wins?”"
         )
         return f"{p1}\n\n{p2}"
+        
+    if "delegator spouse" in n or "delegator" in n:
+        p1 = (
+            f"For **{name}**, assume they’re capable but disengaged — they may have relied on a partner to handle finances "
+            "and now feel behind, embarrassed, or worried about making a mistake."
+        )
+        p2 = (
+            "Your job is to create psychological safety *and* a simple operating system: confirm the 3–5 decisions they must own, "
+            "set a short cadence (monthly 20-minute check-in), and use plain-language summaries. "
+            "A helpful opener is: “You don’t have to become a finance expert — you just need a clear system and a few confident habits.”"
+        )
+        return f"{p1}\n\n{p2}"
+
+    if "business owner nearing exit" in n or ("business owner" in n and "exit" in n):
+        p1 = (
+            f"For **{name}**, treat the business as the center of gravity. "
+            "Most planning tradeoffs come down to timing, valuation uncertainty, taxes, and how proceeds convert into retirement income."
+        )
+        p2 = (
+            "Anchor the conversation around *optionality*: clarify a target exit window, identify the top value drivers and risks, "
+            "and map how different sale outcomes affect lifestyle, taxes, and legacy goals. "
+            "A helpful opener is: “Let’s define what a ‘good exit’ looks like, then pressure-test a few realistic scenarios.”"
+        )
+        return f"{p1}\n\n{p2}"
+
+    if "henry" in n or "high earner" in n:
+        p1 = (
+            f"For **{name}**, normalize the disconnect: high income often comes with high fixed costs, lifestyle creep, and decision fatigue. "
+            "They usually need a plan that protects progress without requiring constant willpower."
+        )
+        p2 = (
+            "Focus on *automation + guardrails*: get the savings/investing system right first, then tighten taxes/benefits, "
+            "and name the one or two spending categories that quietly sabotage goals. "
+            "A helpful opener is: “You’re earning a lot — our goal is to convert that income into durable freedom, not just higher spending.”"
+        )
+        return f"{p1}\n\n{p2}"
+
+    if "solo ager" in n or "solo" in n:
+        p1 = (
+            f"For **{name}**, emphasize resilience: fewer built-in supports means planning needs to cover both finances and decision continuity. "
+            "The key risk is not having the right people and paperwork in place when something unexpected happens."
+        )
+        p2 = (
+            "Prioritize *trusted contacts + authority*: confirm healthcare proxy/POA, list emergency contacts, and build a short ‘if I’m incapacitated’ playbook. "
+            "Then focus on affordability of care and reliable cash-flow in later years. "
+            "A helpful opener is: “Let’s make sure you always have someone who can step in — and a plan that works even if you’re doing this on your own.”"
+        )
+        return f"{p1}\n\n{p2}"
+
+    if "diminished decision-maker" in n or "diminished decision" in n:
+        p1 = (
+            f"For **{name}**, the priority is protecting autonomy while reducing risk. "
+            "You want a plan that supports dignity and independence *and* puts safeguards in place before a crisis forces decisions."
+        )
+        p2 = (
+            "Lead with *capacity-sensitive planning*: confirm decision authority, simplify accounts and bill-pay, and identify a trusted monitor/support person. "
+            "Keep choices small, repeat key points, and document decisions clearly. "
+            "A helpful opener is: “Let’s set up guardrails that protect you, while keeping you in control as much as possible.”"
+        )
+        return f"{p1}\n\n{p2}"
+
+    if "responsible supporter" in n or ("supporter" in n and "parent" in n):
+        p1 = (
+            f"For **{name}**, name the emotional bind: they’re trying to help a parent without taking over their parent’s life. "
+            "They need clarity on roles, boundaries, and what ‘help’ actually means."
+        )
+        p2 = (
+            "Start with *shared expectations*: what the parent wants, what help is welcome, and what decisions require consent. "
+            "Then move to *risk reduction*: paperwork, account visibility, and a plan for ‘what if something changes suddenly.’ "
+            "A helpful opener is: “Let’s support your parent’s independence while making sure the essentials are protected.”"
+        )
+        return f"{p1}\n\n{p2}"
+
+        
+        
 
     # --- fallback: still persona-aware using fields, not template-generic ---
     context_bits = [b for b in [life_stage, primary, decision] if b]
