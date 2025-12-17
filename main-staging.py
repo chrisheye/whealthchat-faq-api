@@ -90,21 +90,21 @@ BRAND_TO_SOURCE = {
 import random
 
 def should_show_persona_note(persona: dict, raw_q: str) -> bool:
-    """
-    Simple throttle to reduce repetition without needing session memory.
-    """
     q = (raw_q or "").lower()
 
-    # Always show for high-stakes / persona-relevant topics
     high_stakes_terms = [
         "care", "caregiving", "hospital", "stroke", "dementia", "alz",
         "incapac", "poa", "proxy", "guardrail", "long-term care", "ltc"
     ]
-    if any(t in q for t in high_stakes_terms):
+
+    matched = [t for t in high_stakes_terms if t in q]
+    if matched:
+        print("🧪 persona_note: HIGH-STAKES match:", matched, "| q:", raw_q[:120])
         return True
 
-    # Otherwise show only some of the time
-    return random.random() < 0.30
+    show = random.random() < 0.30
+    print("🧪 persona_note: NON-high-stakes | show?", show, "| q:", raw_q[:120])
+    return show
 
 
 def sanitize_question_for_disallowed_brands(question: str, allowed_sources: list[str]) -> str:
