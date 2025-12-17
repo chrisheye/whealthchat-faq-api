@@ -173,8 +173,7 @@ def persona_tagline(persona: dict) -> str:
         )
 
     s1, s2 = pick_hint()
-    return f"*Note for **{name}**: {s1} {s2}*"
-
+    return f"*For the **{name}**, {s1.lower()} {s2.lower()}*"
 
 
 # --- APP SETUP ---
