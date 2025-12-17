@@ -87,6 +87,26 @@ BRAND_TO_SOURCE = {
     "pendleton square": "pendleton",  # alias → source slug
 }
 
+import random
+
+def should_show_persona_note(persona: dict, raw_q: str) -> bool:
+    """
+    Simple throttle to reduce repetition without needing session memory.
+    """
+    q = (raw_q or "").lower()
+
+    # Always show for high-stakes / persona-relevant topics
+    high_stakes_terms = [
+        "care", "caregiving", "hospital", "stroke", "dementia", "alz",
+        "incapac", "poa", "proxy", "guardrail", "long-term care", "ltc"
+    ]
+    if any(t in q for t in high_stakes_terms):
+        return True
+
+    # Otherwise show only some of the time
+    return random.random() < 0.30
+
+
 def sanitize_question_for_disallowed_brands(question: str, allowed_sources: list[str]) -> str:
     allowed_lower = {s.lower() for s in allowed_sources}
 
@@ -471,8 +491,9 @@ async def finalize_response(
             text = await rewrite_with_tone(text, audience_block)
 
     # 2) Always inject persona note when persona exists
-    if isinstance(persona, dict) and persona:
+    if isinstance(persona, dict) and persona and should_show_persona_note(persona, text):
         text = insert_persona_into_answer(text, persona_note(persona))
+
 
     return text
 
