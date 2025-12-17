@@ -4,7 +4,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from weaviate.classes.query import Filter
 from weaviate.classes.init import AdditionalConfig
 from weaviate.auth import AuthApiKey
-import weaviate
 import openai
 import requests
 import os
@@ -94,7 +93,7 @@ def should_show_persona_note(persona: dict, raw_q: str) -> bool:
 
     high_stakes_terms = [
         "caregiving", "hospital", "stroke", "dementia", "alz",
-        "incapac", "poa", "proxy", "diminshed", "long-term care", "ltc"
+        "incapac", "poa", "proxy", "diminish", "long-term care", "ltc"
     ]
 
     matched = [t for t in high_stakes_terms if t in q]
@@ -126,6 +125,13 @@ def sanitize_question_for_disallowed_brands(question: str, allowed_sources: list
             ]
             q = replace_brand(q, brand, patterns)
     return q
+
+def persona_tagline(persona: dict) -> str:
+    name = (persona.get("client_name") or persona.get("name") or persona.get("id") or "").strip()
+    if not name:
+        return ""
+    # one short sentence, not the “high-stakes” script
+    return f"*Note for **{name}**: keep the framing aligned with their situation and decision style — aim for clarity and one practical next step.*"
 
 
 # --- APP SETUP ---
@@ -493,10 +499,13 @@ async def finalize_response(
             text = await rewrite_with_tone(text, audience_block)
 
     # 2) Always inject persona note when persona exists
-    if isinstance(persona, dict) and persona and should_show_persona_note(persona, raw_q):
-        text = insert_persona_into_answer(text, persona_note(persona))
-
-
+    if isinstance(persona, dict) and persona:
+        if should_show_persona_note(persona, raw_q):
+            # full emphasis block (your existing persona_note templates)
+            text = insert_persona_into_answer(text, persona_note(persona))
+        else:
+            # light mention (almost always), no repeated “high-stakes” content
+            text = insert_persona_into_answer(text, persona_tagline(persona))
 
     return text
 
