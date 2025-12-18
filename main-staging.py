@@ -548,11 +548,8 @@ async def get_faq(request: Request):
                     raw_q=raw_q,
                     allow_rewrite=False
                 )
-
-                
+              
                 return {"response": resp_text}
-
-
 
         print("⚠️ No strict match. Proceeding to vector search.")
 
@@ -683,6 +680,7 @@ async def get_faq(request: Request):
             prompt = (
                 f"{SYSTEM_PROMPT}\n\n"
                 f"{audience_block}\n\n"
+                f"{persona_block}\n\n"
                 f"Question: {safe_q}\n\n"
                 f"Here are multiple answers and coaching tips from similar questions, contained inside the block below.\n"
                 f"The block is delimited by <<FAQ_BLOCK_START>> and <<FAQ_BLOCK_END>>.\n"
