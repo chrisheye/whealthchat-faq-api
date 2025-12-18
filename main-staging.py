@@ -77,6 +77,75 @@ SYSTEM_PROMPT = (
     "If a long-term care calculator is mentioned, refer ONLY to the WhealthChat custom calculator."
 )
 
+def persona_fields_for_question(raw_q: str) -> dict:
+    """
+    Returns a dict:
+      {"topic": "<label>", "fields": ["life_stage", "primary_concerns", ...]}
+    The goal: only pass the *relevant* persona fields to the LLM for this question.
+    """
+    q = (raw_q or "").lower()
+
+    TOPICS = [
+        # Estate / authority / documents
+        ("authority_docs", [
+            r"\bpoa\b", r"power of attorney", r"healthcare proxy", r"proxy",
+            r"advance directive", r"living will", r"trust", r"will\b",
+            r"beneficiar", r"executor", r"trustee", r"incapac", r"guardianship"
+        ], ["life_stage", "primary_concerns"]),
+
+        # Health events / caregiving / LTC
+        ("health_caregiving", [
+            r"caregiv", r"memory care", r"assisted living", r"skilled nursing",
+            r"long[-\s]?term care", r"\bltc\b", r"dementia", r"alz", r"stroke",
+            r"hospital", r"diagnos", r"declin", r"cognitive"
+        ], ["life_stage", "primary_concerns"]),
+
+        # Cash-flow / income / retirement mechanics
+        ("income_cashflow", [
+            r"cash flow", r"budget", r"spend", r"debt", r"emergency fund",
+            r"retire", r"social security", r"pension", r"annuit", r"rmd",
+            r"withdraw", r"income", r"tax"
+        ], ["primary_concerns", "decision_style"]),
+
+        # Behavior / decision overwhelm / anxiety
+        ("decision_behavior", [
+            r"overwhelm", r"anx", r"stress", r"panic", r"avoid",
+            r"confident", r"decision", r"procrast", r"motivat",
+            r"impuls", r"regret"
+        ], ["decision_style", "primary_concerns"]),
+    ]
+
+    for topic, patterns, fields in TOPICS:
+        if any(re.search(p, q) for p in patterns):
+            return {"topic": topic, "fields": fields}
+
+    # Default: keep it light
+    return {"topic": "general", "fields": ["decision_style"]}
+
+def slice_persona(persona: dict, fields: list[str]) -> dict:
+    """Return only the persona fields we want the model to see for this question."""
+    if not isinstance(persona, dict) or not persona:
+        return {}
+
+    keep = {}
+
+    # Always keep a usable name/id for referencing
+    name = (persona.get("client_name") or persona.get("name") or persona.get("id") or "").strip()
+    if name:
+        keep["name"] = name
+
+    # Only include allowed fields if present
+    if "life_stage" in fields and (persona.get("life_stage") or "").strip():
+        keep["life_stage"] = (persona.get("life_stage") or "").strip()
+
+    if "primary_concerns" in fields and (persona.get("primary_concerns") or "").strip():
+        keep["primary_concerns"] = (persona.get("primary_concerns") or "").strip()
+
+    if "decision_style" in fields and (persona.get("decision_style") or "").strip():
+        keep["decision_style"] = (persona.get("decision_style") or "").strip()
+
+    return keep
+
 
 def normalize(text):
     return re.sub(r"[^\w\s]", "", text.lower().strip())
@@ -86,24 +155,6 @@ BRAND_TO_SOURCE = {
     "pendleton square": "pendleton",  # alias → source slug
 }
 
-import random
-
-def should_show_persona_note(persona: dict, raw_q: str) -> bool:
-    q = (raw_q or "").lower()
-
-    high_stakes_terms = [
-        "caregiving", "hospital", "stroke", "dementia", "alz",
-        "incapac", "poa", "proxy", "diminish", "long-term care", "ltc"
-    ]
-
-    matched = [t for t in high_stakes_terms if t in q]
-    if matched:
-        print("🧪 persona_note: HIGH-STAKES match:", matched, "| q:", raw_q[:120])
-        return True
-
-    show = random.random() < 0.30
-    print("🧪 persona_note: NON-high-stakes | show?", show, "| q:", raw_q[:120])
-    return show
 
 
 def sanitize_question_for_disallowed_brands(question: str, allowed_sources: list[str]) -> str:
@@ -126,74 +177,6 @@ def sanitize_question_for_disallowed_brands(question: str, allowed_sources: list
             q = replace_brand(q, brand, patterns)
     return q
 
-def persona_tagline(persona: dict) -> str:
-    name = (persona.get("client_name") or persona.get("name") or persona.get("id") or "").strip()
-    if not name:
-        return ""
-
-    # strip any markdown emphasis characters anywhere in the name
-    name = re.sub(r"[*_`]+", "", name).strip()
-
-    key = name.lower().strip()
-
-    TAGLINES = {
-        "resilient partner": (
-            "stabilize the situation first before seeking to optimize.",
-            "Protect cash flow and decision-making authority early."
-        ),
-        "empowered widow": (
-            "slow the pace to reduce decision-making overload.",
-            "Build confidence with small, visible wins."
-        ),
-        "self-directed investor": (
-            "lead with tradeoffs and clear decision criteria.",
-            "Offer options and let them choose the rule."
-        ),
-        "late starter": (
-            "keep trhe urgency while avoiding shame.",
-            "Focus on the highest-impact moves first."
-        ),
-        "delegator spouse": (
-            "create psychological safety and simplicity.",
-            "Define the few decisions they must confidently own."
-        ),
-        "business owner nearing exit": (
-            "anchor everything to exit timing and uncertainty.",
-            "Pressure-test outcomes and convert proceeds into income."
-        ),
-        "henry (high earner, not rich yet)": (
-            "normalize the income–wealth gap and reduce lifestyle creep.",
-            "Use automation and guardrails to protect progress."
-        ),
-        "financially anxious millennial caregiver": (
-            "reduce their feelings of being overwhelmed by separating urgent versus what is less important.",
-            "Focus on stability and one small next step at a time."
-        ),
-        "solo ager": (
-            "prioritize resilience and decision-making clarity and safety.",
-            "Identify trusted contacts and put plans in place for health-event disruption."
-        ),
-        "diminished decision-maker": (
-            "protect autonomy while reducing financial risk.",
-            "Simplify choices and put guardrails in place early."
-        ),
-        "responsible supporter": (
-            "name the emotional bind and clarify roles.",
-            "Support independence while reducing avoidable risks."
-        ),
-        "well-prepared planner": (
-            "treat this as integration and stress-testing.",
-            "Align professionals and run a few ‘what if’ scenarios."
-        ),
-    }
-
-    s1, s2 = TAGLINES.get(
-        key,
-        ("Keep the framing aligned with their decision style.", "Offer one practical next step that fits their bandwidth.")
-    )
-
-    # Plain text: no *italics* or **bold**
-    return f"For the {name}, {s1} {s2}"
 
 
 # --- APP SETUP ---
@@ -249,7 +232,6 @@ def version_check():
 
 
 async def rewrite_with_tone(text, audience_block, persona_block: str = ""):
-    # If there is no audience and no persona, just return the original text
     if not audience_block and not persona_block:
         return text
 
@@ -258,8 +240,9 @@ async def rewrite_with_tone(text, audience_block, persona_block: str = ""):
         f"{persona_block}\n\n"
         "Rewrite the following answer so it matches this audience and persona.\n"
         "Keep all key facts and recommendations the same.\n"
-        "You MUST refer explicitly to the persona by name at least once "
-        "if a persona is provided.\n"
+        "Use the persona only to adjust tone, pacing, emphasis, and examples.\n"
+        "Do NOT restate persona background.\n"
+        "Do NOT force a persona mention if it feels unnatural.\n"
         "Do NOT add new tools or links, and do NOT remove any that are already present.\n\n"
         f"ANSWER:\n{text}"
     )
@@ -273,270 +256,6 @@ async def rewrite_with_tone(text, audience_block, persona_block: str = ""):
 
     return reply.choices[0].message.content.strip()
 
-async def add_persona_note(base_text: str, audience_block: str, persona_block: str) -> str:
-    """
-    Generate a short add-on note that explains how the existing answer
-    applies to the current persona, without rewriting or removing content.
-    """
-    if not persona_block:
-        return ""
-
-    prompt = (
-        f"{audience_block}\n\n"
-        f"{persona_block}\n\n"
-        "You are given an existing answer about financial/retirement/health planning.\n"
-        "Do NOT rewrite or summarize the answer.\n"
-        "Instead, write a short add-on section that explains how this guidance applies\n"
-        "specifically to the persona described above.\n\n"
-        "Rules:\n"
-        "- Keep the original answer unchanged.\n"
-        "- Refer explicitly to the persona by name at least once.\n"
-        "- Focus on framing, emphasis, and next steps that fit this persona.\n"
-        "- 1–2 short paragraphs, no more than 5 sentences total.\n"
-        "- Do NOT add new tools or links that are not already in the answer.\n\n"
-        "EXISTING ANSWER:\n"
-        f"{base_text}\n"
-    )
-
-    reply = openai.ChatCompletion.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=300,
-        temperature=0.3
-    )
-
-    return reply.choices[0].message.content.strip()
-
-def persona_note(persona: dict) -> str:
-    if not isinstance(persona, dict) or not persona:
-        return ""
-
-    name = (persona.get("client_name") or persona.get("name") or persona.get("id") or "").strip()
-    if not name:
-        return ""
-
-    life_stage = (persona.get("life_stage") or "").strip()
-    primary = (persona.get("primary_concerns") or "").strip()
-    decision = (persona.get("decision_style") or "").strip()
-
-    def clean(s: str) -> str:
-        s = re.sub(r"<br\s*/?>", " ", s, flags=re.IGNORECASE)
-        s = s.replace("•", " ")
-        s = re.sub(r"\s+", " ", s).strip()
-        return s
-
-    life_stage = clean(life_stage)
-    primary = clean(primary)
-    decision = clean(decision)
-
-    n = name.lower()
-
-    # --- persona-specific emphasis blocks ---
-    if "resilient partner" in n:
-        p1 = (
-            f"For **{name}**, focus on stabilizing the situation before you try to “optimize” anything. "
-            "They’re likely juggling medical uncertainty, caregiver logistics, and fear about long-term affordability."
-        )
-        p2 = (
-            "Start by identifying the *next 72 hours* decisions (care plan, who is coordinating, immediate cash-flow/bills). "
-            "Then move to *protections*: confirm decision authority (POA/healthcare proxy), locate key accounts/insurance, and identify who can help. "
-            "A helpful opener is: “Let’s separate what’s urgent this week from what we can plan calmly next.”"
-        )
-        return f"{p1}\n\n{p2}"
-
-    if "empowered widow" in n or "widow" in n:
-        p1 = (
-            f"For **{name}**, assume decision fatigue and grief are draining bandwidth even if they seem “on top of it.” "
-            "The priority is reducing overwhelm while rebuilding confidence as the sole decision-maker."
-        )
-        p2 = (
-            "Emphasize *simplification*: consolidate accounts, re-check beneficiaries/titles, and create a short monthly money rhythm. "
-            "Then shift to *security*: update trusted contacts, confirm the estate plan still reflects their intent, and set a 30–60 day decision timeline for any big changes. "
-            "A helpful opener is: “You don’t need to decide everything now — we’ll make a clean, safe plan in small steps.”"
-        )
-        return f"{p1}\n\n{p2}"
-
-    if "sandwich" in n:
-        p1 = (
-            f"For **{name}**, name the squeeze directly: competing obligations, guilt, and constant interruptions. "
-            "They need a plan that protects time and prevents “emergency-driven” decisions."
-        )
-        p2 = (
-            "Prioritize *boundaries + roles*: who handles parent care tasks, who handles kid-related costs, and what gets delegated. "
-            "Then focus on *cash-flow shock absorbers*: caregiving budget, insurance review, and a short list of “red flag” triggers that require action. "
-            "A helpful opener is: “Let’s design this so you’re not reinventing the plan every time there’s a new crisis.”"
-        )
-        return f"{p1}\n\n{p2}"
-
-    if "late starter" in n:
-        p1 = (
-            f"For **{name}**, keep the tone practical and non-shaming — urgency without panic. "
-            "They often need clarity on what matters most and a path that feels achievable."
-        )
-        p2 = (
-            "Emphasize *sequence*: stabilize spending, capture matches/benefits, then automate contributions and protect against major risks. "
-            "Use quick wins to build momentum (one account cleanup, one beneficiary update, one savings automation). "
-            "A helpful opener is: “We’ll focus on the highest-impact moves first — you can still make meaningful progress.”"
-        )
-        return f"{p1}\n\n{p2}"
-
-    if "financially anxious millennial caregiver" in n or "millennial caregiver" in n:
-        p1 = (
-            f"For **{name}**, assume high baseline anxiety and low slack — money stress plus caregiver stress. "
-            "The priority is reducing shame and overwhelm while building a simple, repeatable next-step plan."
-        )
-        p2 = (
-            "Emphasize *stability first*: clarify the immediate cash-flow picture, define one small action for this week, "
-            "and separate “urgent” from “important” so everything doesn’t feel like an emergency. "
-            "A helpful opener is: “Let’s focus on the one decision that makes the next month easier, then we’ll build from there.”"
-        )
-        return f"{p1}\n\n{p2}"
-    
-    if "well-prepared planner" in n or "well prepared planner" in n:
-        p1 = (
-            f"For **{name}**, assume they’re already doing many things right — they value integration, "
-            "coordination across professionals, and optimization at the margins."
-        )
-        p2 = (
-            "Focus on *playbooks + alignment*: confirm roles across advisor/CPA/attorney, run a document and beneficiary audit, "
-            "and pressure-test the plan with a few “what if” scenarios (health event, market drawdown, caregiver need). "
-            "A helpful opener is: “You’ve built a strong foundation — let’s make sure it’s fully integrated and resilient under stress.”"
-        )
-        return f"{p1}\n\n{p2}"
-
-    if "self-directed" in n or "self directed" in n:
-        p1 = (
-            f"For **{name}**, lead with autonomy and options — they’ll disengage if it feels like a lecture. "
-            "They respond best to frameworks, tradeoffs, and clear decision criteria."
-        )
-        p2 = (
-            "Offer a short menu of paths with pros/cons, and invite them to choose the decision rule (cost, simplicity, flexibility, downside protection). "
-            "Then ask for a “definition of done” so you can turn analysis into action. "
-            "A helpful opener is: “If you had to pick one priority — simplicity, control, or downside protection — which wins?”"
-        )
-        return f"{p1}\n\n{p2}"
-        
-    if "delegator spouse" in n or "delegator" in n:
-        p1 = (
-            f"For **{name}**, assume they’re capable but disengaged — they may have relied on a partner to handle finances "
-            "and now feel behind, embarrassed, or worried about making a mistake."
-        )
-        p2 = (
-            "Your job is to create psychological safety *and* a simple operating system: confirm the 3–5 decisions they must own, "
-            "set a short cadence (monthly 20-minute check-in), and use plain-language summaries. "
-            "A helpful opener is: “You don’t have to become a finance expert — you just need a clear system and a few confident habits.”"
-        )
-        return f"{p1}\n\n{p2}"
-
-    if "business owner nearing exit" in n or ("business owner" in n and "exit" in n):
-        p1 = (
-            f"For **{name}**, treat the business as the center of gravity. "
-            "Most planning tradeoffs come down to timing, valuation uncertainty, taxes, and how proceeds convert into retirement income."
-        )
-        p2 = (
-            "Anchor the conversation around *optionality*: clarify a target exit window, identify the top value drivers and risks, "
-            "and map how different sale outcomes affect lifestyle, taxes, and legacy goals. "
-            "A helpful opener is: “Let’s define what a ‘good exit’ looks like, then pressure-test a few realistic scenarios.”"
-        )
-        return f"{p1}\n\n{p2}"
-
-    if "henry" in n or "high earner" in n:
-        p1 = (
-            f"For **{name}**, normalize the disconnect: high income often comes with high fixed costs, lifestyle creep, and decision fatigue. "
-            "They usually need a plan that protects progress without requiring constant willpower."
-        )
-        p2 = (
-            "Focus on *automation and guardrails*: get the savings/investing system right first, then tighten taxes/benefits, "
-            "and name the one or two spending categories that quietly sabotage goals. "
-            "A helpful opener is: “You’re earning a lot — our goal is to convert that income into durable freedom, not just higher spending.”"
-        )
-        return f"{p1}\n\n{p2}"
-
-    if "solo ager" in n or "solo" in n:
-        p1 = (
-            f"For **{name}**, emphasize resilience: fewer built-in supports means planning needs to cover both finances and decision continuity. "
-            "The key risk is not having the right people and paperwork in place when something unexpected happens."
-        )
-        p2 = (
-            "Prioritize *trusted contacts + authority*: confirm healthcare proxy/POA, list emergency contacts, and build a short ‘if I’m incapacitated’ playbook. "
-            "Then focus on affordability of care and reliable cash-flow in later years. "
-            "A helpful opener is: “Let’s make sure you always have someone who can step in — and a plan that works even if you’re doing this on your own.”"
-        )
-        return f"{p1}\n\n{p2}"
-
-    if "diminished decision-maker" in n or "diminished decision" in n:
-        p1 = (
-            f"For **{name}**, the priority is protecting autonomy while reducing risk. "
-            "You want a plan that supports dignity and independence *and* puts safeguards in place before a crisis forces decisions."
-        )
-        p2 = (
-            "Lead with *capacity-sensitive planning*: confirm decision authority, simplify accounts and bill-pay, and identify a trusted monitor/support person. "
-            "Keep choices small, repeat key points, and document decisions clearly. "
-            "A helpful opener is: “Let’s set up guardrails that protect you, while keeping you in control as much as possible.”"
-        )
-        return f"{p1}\n\n{p2}"
-
-    if "responsible supporter" in n or ("supporter" in n and "parent" in n):
-        p1 = (
-            f"For **{name}**, name the emotional bind: they’re trying to help a parent without taking over their parent’s life. "
-            "They need clarity on roles, boundaries, and what ‘help’ actually means."
-        )
-        p2 = (
-            "Start with *shared expectations*: what the parent wants, what help is welcome, and what decisions require consent. "
-            "Then move to *risk reduction*: paperwork, account visibility, and a plan for ‘what if something changes suddenly.’ "
-            "A helpful opener is: “Let’s support your parent’s independence while making sure the essentials are protected.”"
-        )
-        return f"{p1}\n\n{p2}"
-
-        
-        
-
-    # --- fallback: still persona-aware using fields, not template-generic ---
-    context_bits = [b for b in [life_stage, primary, decision] if b]
-    context = (context_bits[0] if context_bits else "").split(".")[0][:220].strip()
-
-    p1 = f"For **{name}**, the guidance above applies — but it should match their situation and decision style."
-    if context:
-        p1 += f" Based on what you know ({context}), reflect the *real constraint* first (time, confidence, stress, complexity) before moving to recommendations."
-
-    p2 = (
-        "To make this feel personal, name one priority you’re optimizing for (stability, simplicity, affordability, protection, or clarity), "
-        "and offer one concrete next step that fits their bandwidth right now. "
-        "If they feel stuck, reduce the choice set and confirm the next action in plain language."
-    )
-    return f"{p1}\n\n{p2}"
-
-
-def insert_persona_into_answer(full_text: str, note: str) -> str:
-    """
-    Insert persona note EARLY in the main answer (after the first paragraph),
-    and always BEFORE the Coaching Tip label if present.
-    """
-    if not note:
-        return full_text
-
-    marker = "**💡 COACHING TIP:**"
-    if marker in full_text:
-        answer_part, tip_part = full_text.split(marker, 1)
-
-        # split main answer into paragraphs
-        paras = [p for p in answer_part.split("\n\n") if p.strip()]
-
-        if len(paras) >= 1:
-            # insert after first paragraph
-            new_answer = "\n\n".join([paras[0], note] + paras[1:])
-        else:
-            new_answer = f"{answer_part}\n\n{note}"
-
-        return f"{new_answer}\n\n{marker}{tip_part}"
-
-    # no coaching tip marker: still insert after first paragraph
-    paras = [p for p in full_text.split("\n\n") if p.strip()]
-    if len(paras) >= 1:
-        return "\n\n".join([paras[0], note] + paras[1:])
-    return f"{full_text}\n\n{note}"
-
-
 
 async def finalize_response(
     text: str,
@@ -548,11 +267,6 @@ async def finalize_response(
     allow_rewrite: bool = True
 ) -> str:
 
-    """
-    - allow_rewrite=False: do NOT call OpenAI rewrite (used for exact-match path).
-    - Always insert persona note into the main answer when persona is present.
-    """
-
     # 1) Rewrite tone ONLY if allowed (never for exact matches)
     if allow_rewrite and (row_user or "").strip().lower() == "both":
         if persona_block:
@@ -560,16 +274,9 @@ async def finalize_response(
         elif audience_block:
             text = await rewrite_with_tone(text, audience_block)
 
-    # 2) Always inject persona note when persona exists
-    if isinstance(persona, dict) and persona:
-        if should_show_persona_note(persona, raw_q):
-            # full emphasis block (your existing persona_note templates)
-            text = insert_persona_into_answer(text, persona_note(persona))
-        else:
-            # light mention (almost always), no repeated “high-stakes” content
-            text = insert_persona_into_answer(text, persona_tagline(persona))
-
+    # 2) Persona injection removed (no taglines / notes here anymore)
     return text
+
 
 
 
@@ -622,7 +329,73 @@ def is_default_persona(p: dict) -> bool:
 
     return False
 
+# --- Step B: topic-gated persona_block (no taglines) ---
 
+def detect_topic(raw_q: str) -> str:
+    q = (raw_q or "").lower()
+    if any(t in q for t in ["poa", "power of attorney", "healthcare proxy", "incapac", "capacity", "diminish", "dementia", "alz"]):
+        return "capacity"
+    if any(t in q for t in ["caregiving", "caregiver", "memory care", "assisted living", "nursing home", "home care"]):
+        return "caregiving"
+    if any(t in q for t in ["long-term care", "ltc", "long term care", "care costs", "medicaid"]):
+        return "care_costs"
+    if any(t in q for t in ["will", "trust", "estate", "inheritance", "beneficiary", "probate"]):
+        return "estate"
+    if any(t in q for t in ["retirement", "income", "social security", "annuity", "rmd"]):
+        return "retirement_income"
+    return "general"
+
+def persona_slice_for_topic(persona: dict, topic: str) -> dict:
+    # Pull only the persona fields that matter for THIS topic.
+    # (These keys assume your persona JSON already contains these fields;
+    # missing keys just become empty strings.)
+    def g(k): return (persona.get(k) or "").strip()
+
+    common = {
+        "persona_name": (persona.get("client_name") or persona.get("name") or persona.get("id") or "").strip(),
+        "life_stage": g("life_stage"),
+        "primary_concerns": g("primary_concerns"),
+        "decision_style": g("decision_style"),
+    }
+
+    topic_map = {
+        "capacity": {
+            "capacity_triggers": g("capacity_triggers"),
+            "trusted_contacts": g("trusted_contacts"),
+            "decision_support": g("decision_support"),
+        },
+        "caregiving": {
+            "caregiving_situation": g("caregiving_situation"),
+            "caregiving_constraints": g("caregiving_constraints"),
+            "family_dynamics": g("family_dynamics"),
+        },
+        "care_costs": {
+            "cost_anxieties": g("cost_anxieties"),
+            "coverage_gaps": g("coverage_gaps"),
+            "risk_tolerance": g("risk_tolerance"),
+        },
+        "estate": {
+            "legacy_goals": g("legacy_goals"),
+            "family_complexity": g("family_complexity"),
+            "document_readiness": g("document_readiness"),
+        },
+        "retirement_income": {
+            "income_style": g("income_style"),
+            "spending_patterns": g("spending_patterns"),
+            "security_preferences": g("security_preferences"),
+        },
+        "general": {
+            # keep it light: only common fields
+        }
+    }
+
+    sliced = {**common, **topic_map.get(topic, {})}
+
+    # Drop empty values so the block stays compact
+    return {k: v for k, v in sliced.items() if str(v).strip()}
+
+
+# --- end Step B ---
 
 @app.post("/faq")
 async def get_faq(request: Request):
@@ -715,33 +488,23 @@ async def get_faq(request: Request):
             (p.get("decision_style") or "").strip(),
         ])
 
+    # Step B: compute topic + persona_slice (topic-gated)
+    topic = detect_topic(raw_q)
+    persona_slice = persona_slice_for_topic(persona, topic)
+
 
     # Build persona_block only if persona is real (after the guard)
     if isinstance(persona, dict) and persona and has_real_persona_fields(persona):
-        name = (persona.get("client_name") or persona.get("name") or persona.get("id") or "").strip()
-        life_stage = (persona.get("life_stage") or "").strip()
-        primary = (persona.get("primary_concerns") or "").strip()
-        decision = (persona.get("decision_style") or "").strip()
-
-        if name:
-            persona_block = (
-                "Persona context:\n"
-                f"- Persona name: {name}.\n"
-                f"- Life stage / situation: {life_stage or 'Not specified.'}\n"
-                f"- Primary goals and concerns: {primary or 'Not specified.'}\n"
-                f"- Decision style: {decision or 'Not specified.'}\n\n"
-                "Guidelines for using this persona:\n"
-                "- Keep the core guidance and recommendations the same as they would be for most clients.\n"
-                "- You may briefly mention the persona by name once, but do not make the entire answer about the persona.\n"
-                "- Use the persona mainly to adjust tone, emphasis, and examples slightly.\n"
-                "- Do NOT introduce new topics that are not present in the underlying FAQ content.\n"
-                "- Do NOT remove or downplay general considerations that would apply to most clients.\n"
-            )
+        # Use only the topic-gated slice (not the full persona)
+        persona_block = "Persona context (use lightly; do not restate):\n"
+        persona_block += f"- Topic: {topic}\n"
+        for k, v in persona_slice.items():
+            persona_block += f"- {k}: {v}\n"
     else:
-        # ensures persona is truly "off" downstream
         persona = {}
+        persona_block = ""
 
-  
+ 
     if not raw_q:
         raise HTTPException(status_code=400, detail="Missing 'query' in request body.")
 
