@@ -138,10 +138,10 @@ def persona_tagline(persona: dict) -> str:
     TAGLINES = {
         "resilient partner": (
             "stabilize the situation first before seeking to optimize.",
-            "Protect cash flow and decision authority early."
+            "Protect cash flow and decision-making authority early."
         ),
         "empowered widow": (
-            "slow the pace and to reduce decision-making overload.",
+            "slow the pace to reduce decision-making overload.",
             "Build her confidence with small, visible wins."
         ),
         "self-directed investor": (
@@ -149,7 +149,7 @@ def persona_tagline(persona: dict) -> str:
             "Offer options and let them choose the rule."
         ),
         "late starter": (
-            "keep urgency without shame.",
+            "keep urgency while avoiding shame.",
             "Focus on the highest-impact moves first."
         ),
         "delegator spouse": (
@@ -445,7 +445,7 @@ def persona_note(persona: dict) -> str:
             "They usually need a plan that protects progress without requiring constant willpower."
         )
         p2 = (
-            "Focus on *automation + guardrails*: get the savings/investing system right first, then tighten taxes/benefits, "
+            "Focus on *automation and guardrails*: get the savings/investing system right first, then tighten taxes/benefits, "
             "and name the one or two spending categories that quietly sabotage goals. "
             "A helpful opener is: “You’re earning a lot — our goal is to convert that income into durable freedom, not just higher spending.”"
         )
