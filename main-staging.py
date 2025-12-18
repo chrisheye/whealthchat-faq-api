@@ -138,51 +138,51 @@ def persona_tagline(persona: dict) -> str:
 
     TAGLINES = {
         "resilient partner": (
-            "Stabilize the situation first before seeking to optimize.",
+            "stabilize the situation first before seeking to optimize.",
             "Protect cash flow and decision-making authority early."
         ),
         "empowered widow": (
-            "Slow the pace to reduce decision-making overload.",
+            "slow the pace to reduce decision-making overload.",
             "Build confidence with small, visible wins."
         ),
         "self-directed investor": (
-            "Lead with tradeoffs and clear decision criteria.",
+            "lead with tradeoffs and clear decision criteria.",
             "Offer options and let them choose the rule."
         ),
         "late starter": (
-            "Keep urgency while avoiding shame.",
+            "keep trhe urgency while avoiding shame.",
             "Focus on the highest-impact moves first."
         ),
         "delegator spouse": (
-            "Create psychological safety and simplicity.",
+            "create psychological safety and simplicity.",
             "Define the few decisions they must confidently own."
         ),
         "business owner nearing exit": (
-            "Anchor everything to exit timing and uncertainty.",
+            "anchor everything to exit timing and uncertainty.",
             "Pressure-test outcomes and convert proceeds into income."
         ),
         "henry (high earner, not rich yet)": (
-            "Normalize the income–wealth gap and reduce lifestyle creep.",
+            "normalize the income–wealth gap and reduce lifestyle creep.",
             "Use automation and guardrails to protect progress."
         ),
         "financially anxious millennial caregiver": (
-            "Reduce overwhelm by separating urgent vs. important.",
+            "reduce their feelings of being overwhelmed by separating urgent versus what is less important.",
             "Focus on stability and one small next step at a time."
         ),
         "solo ager": (
-            "Prioritize resilience and decision-making continuity.",
+            "prioritize resilience and decision-making clarity and safety.",
             "Identify trusted contacts and put plans in place for health-event disruption."
         ),
         "diminished decision-maker": (
-            "Protect autonomy while reducing financial risk.",
+            "protect autonomy while reducing financial risk.",
             "Simplify choices and put guardrails in place early."
         ),
         "responsible supporter": (
-            "Name the emotional bind and clarify roles.",
+            "name the emotional bind and clarify roles.",
             "Support independence while reducing avoidable risks."
         ),
         "well-prepared planner": (
-            "Treat this as integration and stress-testing.",
+            "treat this as integration and stress-testing.",
             "Align professionals and run a few ‘what if’ scenarios."
         ),
     }
@@ -193,7 +193,7 @@ def persona_tagline(persona: dict) -> str:
     )
 
     # Plain text: no *italics* or **bold**
-    return f"For the {name}: {s1} {s2}"
+    return f"For the {name}, {s1} {s2}"
 
 
 # --- APP SETUP ---
