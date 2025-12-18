@@ -268,7 +268,7 @@ async def finalize_response(
 ) -> str:
 
     # 1) Rewrite tone ONLY if allowed (never for exact matches)
-    if allow_rewrite and (row_user or "").strip().lower() == "both":
+    if allow_rewrite:
         if persona_block:
             text = await rewrite_with_tone(text, audience_block, persona_block)
         elif audience_block:
