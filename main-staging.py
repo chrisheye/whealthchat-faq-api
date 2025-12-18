@@ -839,14 +839,13 @@ def format_coaching_tip_paragraphs(text: str) -> str:
 @app.get("/faq-count")
 def count_faqs():
     try:
-        count = client.collections.get("FAQ").aggregate.over_all(total_count=True).metadata.total_count
-        return {"count": count}
+        resp = client.collections.get("FAQ").aggregate.over_all(total_count=True)
+        return {"count": resp.total_count}
     except Exception as e:
         logger.exception("❌ Error counting FAQs")
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- persona-classify (staging) — CLEAN BLOCK ---
-# --- persona-classify (staging) — GUARDED BLOCK ---
+
 from typing import Dict
 from pydantic import BaseModel
 
