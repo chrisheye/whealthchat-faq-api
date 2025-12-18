@@ -278,7 +278,7 @@ async def finalize_response(
     if persona and isinstance(persona, dict):
         pname = (persona.get("client_name") or persona.get("name") or persona.get("id") or "").strip()
         if pname:
-            text = f"*Persona applied: {pname}*\n\n{text}"
+            text = f"Persona applied: {pname}\n\n{text}"
 
     return text
 
