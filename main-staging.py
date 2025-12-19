@@ -23,18 +23,40 @@ with open(Path(ACCESS_MAP_PATH), "r", encoding="utf-8") as f:
     ACCESS_MAP = json.load(f)
 
 
-PERSONA_BY_ID = {}
+# ---- Persona file load (SAFE) ----
+from pathlib import Path
+import json
+import os
+
+PERSONAS_PATH = os.getenv("PERSONAS_PATH", "financial_personas.json")
+
+_PERSONAS_RAW = []          # ✅ always defined
+PERSONA_BY_ID = {}         # ✅ always defined
+
+try:
+    with open(Path(PERSONAS_PATH), "r", encoding="utf-8") as f:
+        _PERSONAS_RAW = json.load(f)
+    print(f"✅ Loaded personas file: {PERSONAS_PATH} (type={type(_PERSONAS_RAW).__name__})")
+except Exception as e:
+    print(f"⚠️ Could not load personas file: {PERSONAS_PATH} — {e}")
+    _PERSONAS_RAW = []  # keep it safe
+
+# Build PERSONA_BY_ID from whatever we loaded (list or dict)
 if isinstance(_PERSONAS_RAW, list):
     for p in _PERSONAS_RAW:
-        pid = (p.get("id") or p.get("name") or "").strip()
-        if pid:
-            PERSONA_BY_ID[pid.lower()] = p
+        if isinstance(p, dict):
+            pid = (p.get("id") or p.get("name") or "").strip()
+            if pid:
+                PERSONA_BY_ID[pid.lower()] = p
 elif isinstance(_PERSONAS_RAW, dict):
     for k, p in _PERSONAS_RAW.items():
         if isinstance(p, dict):
             pid = (p.get("id") or p.get("name") or k or "").strip()
             if pid:
                 PERSONA_BY_ID[pid.lower()] = p
+
+print(f"🧠 PERSONA_BY_ID size: {len(PERSONA_BY_ID)}")
+# ---- end persona load ----
 
 
 
