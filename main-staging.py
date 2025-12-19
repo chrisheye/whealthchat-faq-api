@@ -573,10 +573,8 @@ async def get_faq(request: Request):
 
     raw_q_original = (body.get("query") or "").strip()
     persona_applied_in_query = raw_q_original.lower().startswith("persona context")
-    # ✅ BACKEND FIX: ignore persona unless the query explicitly includes persona context
-    if not persona_applied_in_query:
-        persona = {}
-        persona_block = ""
+    # ✅ Do NOT wipe persona. Persona is controlled by placeholder/default guards only.
+
 
 
     def is_template_persona(p: dict) -> bool:
