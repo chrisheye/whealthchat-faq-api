@@ -540,8 +540,8 @@ async def get_faq(request: Request):
     # ---- Persona context block ----
     persona = body.get("persona")
 # ✅ Clear persona automatically on new sessions
-    if is_new_session:
-        persona = {}
+if is_new_session:
+    persona = {}
 
     # HARD BACKEND GUARD: drop placeholder/default personas
     if not isinstance(persona, dict):
@@ -697,10 +697,7 @@ async def get_faq(request: Request):
                         raw_q=raw_q,
                         allow_rewrite=True
                     )
-
-
                     return {"response": resp_text}
-
 
         print("📦 vector sources:", [o.properties.get("source") for o in objects])
         print(f"🔍 Retrieved {len(objects)} vector matches:")
@@ -763,7 +760,6 @@ async def get_faq(request: Request):
 
             ranked.append((score, obj))
 
-
         ranked.sort(key=lambda t: t[0], reverse=True)
         RANK_SCORE_MIN = 0.40
         top = [obj for sc, obj in ranked if sc >= RANK_SCORE_MIN][:3]
@@ -806,7 +802,6 @@ async def get_faq(request: Request):
                 f"- Do NOT include the label '💡 COACHING TIP' inside the paragraphs.\n\n"
                 f"<<FAQ_BLOCK_START>>\n{combined}\n<<FAQ_BLOCK_END>>"
             )
-
 
             print("Sending prompt to OpenAI.")
             reply = openai.ChatCompletion.create(
@@ -851,14 +846,11 @@ async def get_faq(request: Request):
 
             return {"response": text}
 
-
         else:
             print("❌ No high-quality vector match. Returning fallback message.")
 
-
     except Exception as e:
         print("Vector-search error:", e)
-
 
     return {
         "response": (
