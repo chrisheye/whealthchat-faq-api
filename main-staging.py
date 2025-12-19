@@ -536,8 +536,8 @@ async def get_faq(request: Request):
     # ---- Persona context block ----
     persona = body.get("persona")
 # ✅ Clear persona automatically on new sessions
-if is_new_session:
-    persona = {}
+    if is_new_session:
+        persona = {}
 
     # HARD BACKEND GUARD: drop placeholder/default personas
     if not isinstance(persona, dict):
