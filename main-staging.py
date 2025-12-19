@@ -462,11 +462,12 @@ async def get_faq(request: Request):
     body = await request.json()
     raw_q = body.get("query", "").strip()
 
-    # ✅ SAFEGUARD: if frontend prepends persona text into query, keep only the last sentence
+    # ✅ SAFEGUARD: if frontend prepends persona text into query, extract the real question
     if raw_q.lower().startswith("persona context"):
-        m = re.search(r"\.\s*([^\.\n\r]{5,200})\s*$", raw_q)
+        m = re.search(r"\b(what|how|why|when|where|who|can|should|do|is|are)\b.*$", raw_q, re.IGNORECASE)
         if m:
-            raw_q = m.group(1).strip()
+            raw_q = m.group(0).strip()
+
 
     print("📤 payload body:", body)  # <-- add this line
     print("🧾 RAW /faq body keys:", list(body.keys()))
