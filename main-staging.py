@@ -22,6 +22,22 @@ ACCESS_MAP_PATH = os.getenv("ACCESS_MAP_PATH", "access_map.json")
 with open(Path(ACCESS_MAP_PATH), "r", encoding="utf-8") as f:
     ACCESS_MAP = json.load(f)
 
+
+PERSONA_BY_ID = {}
+if isinstance(_PERSONAS_RAW, list):
+    for p in _PERSONAS_RAW:
+        pid = (p.get("id") or p.get("name") or "").strip()
+        if pid:
+            PERSONA_BY_ID[pid.lower()] = p
+elif isinstance(_PERSONAS_RAW, dict):
+    for k, p in _PERSONAS_RAW.items():
+        if isinstance(p, dict):
+            pid = (p.get("id") or p.get("name") or k or "").strip()
+            if pid:
+                PERSONA_BY_ID[pid.lower()] = p
+
+
+
 def allowed_sources_for_request(request):
     tenant = request.headers.get("X-Tenant") or request.query_params.get("tenant") or "public"
     allowed = ACCESS_MAP.get(tenant, ACCESS_MAP["public"])
@@ -121,6 +137,25 @@ def persona_fields_for_question(raw_q: str) -> dict:
 
     # Default: keep it light
     return {"topic": "general", "fields": ["decision_style"]}
+
+PERSONAS_PATH = os.getenv("PERSONAS_PATH", "financial_personas.json")  # or whatever file you have
+with open(PERSONAS_PATH, "r", encoding="utf-8") as f:
+    _PERSONAS_RAW = json.load(f)
+
+# Build an ID->persona dict that works for either list or dict JSON shapes
+PERSONA_BY_ID = {}
+if isinstance(_PERSONAS_RAW, list):
+    for p in _PERSONAS_RAW:
+        pid = (p.get("id") or p.get("name") or "").strip()
+        if pid:
+            PERSONA_BY_ID[pid.lower()] = p
+elif isinstance(_PERSONAS_RAW, dict):
+    for k, p in _PERSONAS_RAW.items():
+        pid = ((p or {}).get("id") or (p or {}).get("name") or k or "").strip()
+        if pid and isinstance(p, dict):
+            PERSONA_BY_ID[pid.lower()] = p
+
+
 
 def slice_persona(persona: dict, fields: list[str]) -> dict:
     """Return only the persona fields we want the model to see for this question."""
@@ -469,6 +504,20 @@ async def get_faq(request: Request):
     # ✅ Drop placeholder persona so answers don't start with “default”
     if isinstance(persona, dict) and persona and is_default_persona(persona):
         persona = {}
+
+    # ✅ ENRICH PERSONA: if frontend only sends {"id": "..."} load full persona fields
+    # (Requires PERSONA_BY_ID to be defined at startup; I'll show that next if needed.)
+    if isinstance(persona, dict) and persona:
+        pid_full = (persona.get("id") or persona.get("name") or persona.get("client_name") or "").strip()
+        if pid_full:
+            full = PERSONA_BY_ID.get(pid_full.lower())
+            if isinstance(full, dict):
+                persona = {**full, **persona}  # keep any fields frontend already sent
+
+    print("🧩 persona keys after enrichment:", sorted(list(persona.keys()))[:30])
+
+
+
 
     persona_block = ""  # define once
 
