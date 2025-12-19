@@ -13,8 +13,6 @@ import time
 import logging
 import asyncio
 from contextlib import suppress
-
-
 import json, os
 from pathlib import Path
 
@@ -58,7 +56,7 @@ elif isinstance(_PERSONAS_RAW, dict):
 print(f"🧠 PERSONA_BY_ID size: {len(PERSONA_BY_ID)}")
 # ---- end persona load ----
 
-
+SEEN_FAQ_CLIENTS = set()
 
 def allowed_sources_for_request(request):
     tenant = request.headers.get("X-Tenant") or request.query_params.get("tenant") or "public"
@@ -67,7 +65,6 @@ def allowed_sources_for_request(request):
     if "WhealthChat" not in allowed:
         allowed = allowed + ["WhealthChat"]
     return allowed
-
 
 def source_filter(allowed_sources: list[str]):
     return Filter.by_property("source").contains_any(allowed_sources)
@@ -465,6 +462,16 @@ async def get_faq(request: Request):
     body = await request.json()
     raw_q = body.get("query", "").strip()
 
+    # 🧠 BACKEND FIRST-REQUEST GUARD (exact placement)
+    client_ip = request.client.host if request.client else "unknown"
+    ua = request.headers.get("user-agent", "unknown")
+    client_key = f"{client_ip}|{ua}"
+
+    first_time = client_key not in SEEN_FAQ_CLIENTS
+    if first_time:
+        SEEN_FAQ_CLIENTS.add(client_key)
+
+
     # ✅ SAFEGUARD: if frontend prepends persona text into query, extract the real question
     if raw_q.lower().startswith("persona context"):
         m = re.search(r"\b(what|how|why|when|where|who|can|should|do|is|are)\b.*$", raw_q, re.IGNORECASE)
@@ -515,6 +522,10 @@ async def get_faq(request: Request):
 
     # ---- Persona context block ----
     persona = body.get("persona")
+    # 🚫 Ignore sticky/default persona on first question
+    if first_time:
+        persona = {}
+
 
     # HARD BACKEND GUARD: drop placeholder/default personas
     if not isinstance(persona, dict):
