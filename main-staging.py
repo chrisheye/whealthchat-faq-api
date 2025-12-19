@@ -549,7 +549,7 @@ async def get_faq(request: Request):
                 resp_text = await finalize_response(
                     resp_text, row_user, audience_block, persona, persona_block,
                     raw_q=raw_q,
-                    allow_rewrite=False
+                    allow_rewrite=True
                 )
               
                 return {"response": resp_text}
@@ -591,7 +591,7 @@ async def get_faq(request: Request):
                     resp_text = await finalize_response(
                         resp_text, row_user, audience_block, persona, persona_block,
                         raw_q=raw_q,
-                        allow_rewrite=False
+                        allow_rewrite=True
                     )
 
 
