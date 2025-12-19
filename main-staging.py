@@ -339,11 +339,11 @@ async def finalize_response(
             text = await rewrite_with_tone(text, audience_block)
 
     # 3) OPTIONAL: show persona label (visible) so you can confirm it’s being applied
-    if persona and isinstance(persona, dict):
-        pname = (persona.get("client_name") or persona.get("name") or persona.get("id") or "").strip()
-        if pname:
-            text = f"Persona applied: {pname}\n\n{text}"
-
+    if os.getenv("DEBUG_PERSONA_APPLIED", "0") == "1":
+        if persona and isinstance(persona, dict):
+            pname = (persona.get("client_name") or persona.get("name") or persona.get("id") or "").strip()
+            if pname:
+                text = f"Persona applied: {pname}\n\n{text}"
     return text
 
 
