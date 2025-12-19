@@ -644,6 +644,23 @@ async def get_faq(request: Request):
                     continue
                 print("✅ Exact match confirmed.")
                 resp_text = format_response(obj)
+                # ✅ Exact-match persona overlay (no rewriting)
+                if persona_slice:
+                    p_name = persona_slice.get("persona_name") or ""
+                    ds = persona_slice.get("decision_style") or ""
+                    pc = persona_slice.get("primary_concerns") or ""
+
+                    # pick one usable fragment (decision_style first, then primary_concerns)
+                    frag = ""
+                    if ds:
+                        frag = re.split(r"<br>|[\n•\-]", ds)[0].strip()
+                    elif pc:
+                        frag = re.split(r"<br>|[\n•\-]", pc)[0].strip()
+
+                    if frag and p_name:
+                        overlay = f"\n\n*Persona note ({p_name}): {frag}*"
+                        resp_text = resp_text + overlay                
+                
                 print("🧪 EXACT PATH persona_present:", bool(persona))
                 resp_text = await finalize_response(
                     resp_text, row_user, audience_block, persona, persona_block,
