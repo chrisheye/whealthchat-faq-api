@@ -542,13 +542,15 @@ async def get_faq(request: Request):
 
     print("🧩 persona keys after enrichment:", sorted(list(persona.keys()))[:30])
 
-
-
-
     persona_block = ""  # define once
 
     raw_q_original = (body.get("query") or "").strip()
     persona_applied_in_query = raw_q_original.lower().startswith("persona context")
+    # ✅ BACKEND FIX: ignore persona unless the query explicitly includes persona context
+    if not persona_applied_in_query:
+        persona = {}
+        persona_block = ""
+
 
     def is_template_persona(p: dict) -> bool:
         pid = (p.get("id") or "").strip().lower()
