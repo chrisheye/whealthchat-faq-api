@@ -211,8 +211,6 @@ BRAND_TO_SOURCE = {
     "pendleton square": "pendleton",  # alias → source slug
 }
 
-
-
 def sanitize_question_for_disallowed_brands(question: str, allowed_sources: list[str]) -> str:
     allowed_lower = {s.lower() for s in allowed_sources}
 
@@ -232,8 +230,6 @@ def sanitize_question_for_disallowed_brands(question: str, allowed_sources: list
             ]
             q = replace_brand(q, brand, patterns)
     return q
-
-
 
 # --- APP SETUP ---
 app = FastAPI()
@@ -306,12 +302,12 @@ async def rewrite_with_tone(text, audience_block, persona_block: str = ""):
         f"{persona_block}\n\n"
         "Rewrite the following answer so it matches this audience"
         + (" and persona.\n" if persona_block.strip() else ".\n")
-        f"{persona_instruction}"
-        "It should reflect constraints around tone, pacing, support level, and examples.\n"
-        "Keep all key facts and recommendations the same.\n"
-        "Do NOT restate persona background.\n"
-        "Do NOT add new tools or links, and do NOT remove any that are already present.\n\n"
-        f"ANSWER:\n{text}"
+        + f"{persona_instruction}"
+        + "It should reflect constraints around tone, pacing, support level, and examples.\n"
+        + "Keep all key facts and recommendations the same.\n"
+        + "Do NOT restate persona background.\n"
+        + "Do NOT add new tools or links, and do NOT remove any that are already present.\n\n"
+        + f"ANSWER:\n{text}"
     )
 
 
