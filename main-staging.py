@@ -474,8 +474,8 @@ async def get_faq(request: Request):
     session_id = request.headers.get("X-Session-Id") or body.get("session_id") or ""
     is_new_session = False
     if session_id and session_id not in SEEN_SESSIONS:
-    SEEN_SESSIONS.add(session_id)
-    is_new_session = True
+        SEEN_SESSIONS.add(session_id)
+        is_new_session = True
 
     raw_q = body.get("query", "").strip()
 
