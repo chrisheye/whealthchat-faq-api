@@ -57,6 +57,8 @@ print(f"🧠 PERSONA_BY_ID size: {len(PERSONA_BY_ID)}")
 # ---- end persona load ----
 
 SEEN_FAQ_CLIENTS = set()
+SEEN_SESSIONS = set()
+
 
 def allowed_sources_for_request(request):
     tenant = request.headers.get("X-Tenant") or request.query_params.get("tenant") or "public"
@@ -289,20 +291,29 @@ async def rewrite_with_tone(text, audience_block, persona_block: str = ""):
     if not audience_block and not persona_block:
         return text
 
+    persona_instruction = ""
+    if persona_block.strip():
+        persona_instruction = (
+            "ADD ONE explicit persona-tailored sentence in the MAIN ANSWER (not the Coaching Tip).\n"
+            "The rewritten answer may include ONE brief sentence that explicitly names the persona, using natural language such as "
+            "'For a client like the <persona name>,' or 'When working with a <persona name>,'. "
+            "Do NOT use the word 'lens' or describe a framework.\n"
+            "Do NOT force a persona mention if it feels unnatural.\n"
+        )
+
     prompt = (
         f"{audience_block}\n\n"
         f"{persona_block}\n\n"
-        "Rewrite the following answer so it matches this audience and persona.\n"
-        "ADD ONE explicit persona-tailored sentence in the MAIN ANSWER (not the Coaching Tip).\n"
-        "The rewritten answer may include ONE brief sentence that explicitly names the persona, using natural language such as 'For a client like the <persona name>,' or 'When working with a <persona name>,'. Do NOT use the word 'lens' or describe a framework.\n"
-        "It should reflect ONE relevant constraint or emphasis (tone/pacing/support level), not biography.\n"
+        "Rewrite the following answer so it matches this audience"
+        + (" and persona.\n" if persona_block.strip() else ".\n")
+        f"{persona_instruction}"
+        "It should reflect constraints around tone, pacing, support level, and examples.\n"
         "Keep all key facts and recommendations the same.\n"
-        "Use the persona only to adjust tone, pacing, emphasis, and examples.\n"
         "Do NOT restate persona background.\n"
-        "Do NOT force a persona mention if it feels unnatural.\n"
         "Do NOT add new tools or links, and do NOT remove any that are already present.\n\n"
         f"ANSWER:\n{text}"
     )
+
 
     reply = openai.ChatCompletion.create(
         model="gpt-4o-mini",
@@ -460,6 +471,12 @@ def persona_slice_for_topic(persona: dict, topic: str) -> dict:
 @app.post("/faq")
 async def get_faq(request: Request):
     body = await request.json()
+    session_id = request.headers.get("X-Session-Id") or body.get("session_id") or ""
+    is_new_session = False
+    if session_id and session_id not in SEEN_SESSIONS:
+    SEEN_SESSIONS.add(session_id)
+    is_new_session = True
+
     raw_q = body.get("query", "").strip()
 
     # 🧠 BACKEND FIRST-REQUEST GUARD (exact placement)
@@ -522,10 +539,9 @@ async def get_faq(request: Request):
 
     # ---- Persona context block ----
     persona = body.get("persona")
-    # 🚫 Ignore sticky/default persona on first question
-    if first_time:
+# ✅ Clear persona automatically on new sessions
+    if is_new_session:
         persona = {}
-
 
     # HARD BACKEND GUARD: drop placeholder/default personas
     if not isinstance(persona, dict):
