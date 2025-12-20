@@ -654,9 +654,12 @@ async def get_faq(request: Request):
 
                     frag = ""
                     if ds:
-                        frag = re.split(r"<br>|[\n•\-]", ds)[0].strip()
+                        parts = [p.strip() for p in re.split(r"<br>|\n|•|-", ds) if p.strip()]
+                        frag = parts[0] if parts else ""
                     elif pc:
-                        frag = re.split(r"<br>|[\n•\-]", pc)[0].strip()
+                        parts = [p.strip() for p in re.split(r"<br>|\n|•|-", pc) if p.strip()]
+                        frag = parts[0] if parts else ""
+
 
                     print("🧪 OVERLAY DEBUG:", {"p_name": p_name, "frag": frag[:120]})
 
