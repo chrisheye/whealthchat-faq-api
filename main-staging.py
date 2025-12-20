@@ -690,7 +690,7 @@ async def get_faq(request: Request):
                     # pick one usable fragment (decision_style first, then primary_concerns)
                     frag = ""
                     if ds:
-                        frag = re.split(r"<br>|[\n•]", ds)[0].strip()
+                        frag = re.split(r"<br>|\n|•", ds)[0].strip()
                     elif pc:
                         frag = re.split(r"<br>|[\n•\-]", pc)[0].strip()
 
