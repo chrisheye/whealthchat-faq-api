@@ -668,7 +668,8 @@ async def get_faq(request: Request):
                     raw_q=raw_q,
                     allow_rewrite=False
                 )
-              
+                print("🧾 EXACT RETURN (last 300 chars):", resp_text[-300:])
+
                 return {"response": resp_text}
 
         print("⚠️ No strict match. Proceeding to vector search.")
