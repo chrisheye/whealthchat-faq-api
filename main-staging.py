@@ -697,7 +697,8 @@ async def get_faq(request: Request):
                     if frag and p_name:
                         overlay = f"\n\n*Persona note ({p_name}): {frag}*"
                         resp_text = resp_text + overlay                
-                
+                    print("🧪 OVERLAY FRAG RAW:", repr(frag))
+
                 print("🧪 EXACT PATH persona_present:", bool(persona))
                 resp_text = await finalize_response(
                     resp_text, row_user, audience_block, persona, persona_block,
