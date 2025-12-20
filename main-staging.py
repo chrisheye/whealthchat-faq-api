@@ -664,7 +664,7 @@ async def get_faq(request: Request):
                     print("🧪 OVERLAY DEBUG:", {"p_name": p_name, "frag": frag[:120]})
 
                     if frag and p_name:
-                        overlay = f"\n\nPERSONA NOTE ({p_name}): {frag}"
+                        overlay = f"\n\nWhen working with an {p_name}, {frag.rstrip('.') }."
                         marker = "\n\n**💡 COACHING TIP:**"
                         if marker in resp_text:
                             before, after = resp_text.split(marker, 1)
