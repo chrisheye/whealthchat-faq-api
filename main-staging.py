@@ -644,7 +644,28 @@ async def get_faq(request: Request):
                     continue
                 print("✅ Exact match confirmed.")
                 resp_text = format_response(obj)
+                print("🧪 EXACT BEFORE OVERLAY (last 200 chars):", resp_text[-200:])
+
                 # ✅ Exact-match persona overlay (no rewriting)
+                if persona_slice:
+                    p_name = persona_slice.get("persona_name") or persona_slice.get("name") or ""
+                    ds = persona_slice.get("decision_style") or ""
+                    pc = persona_slice.get("primary_concerns") or ""
+
+                    frag = ""
+                    if ds:
+                        frag = re.split(r"<br>|[\n•\-]", ds)[0].strip()
+                    elif pc:
+                        frag = re.split(r"<br>|[\n•\-]", pc)[0].strip()
+
+                    print("🧪 OVERLAY DEBUG:", {"p_name": p_name, "frag": frag[:120]})
+
+                    if frag and p_name:
+                        overlay = f"\n\nPERSONA NOTE ({p_name}): {frag}"
+                        resp_text = resp_text + overlay
+
+                print("🧪 EXACT AFTER OVERLAY (last 300 chars):", resp_text[-300:])
+
                 print("🧪 persona_slice in exact path:", persona_slice)
                 if persona_slice:
                     p_name = persona_slice.get("persona_name") or ""
