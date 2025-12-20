@@ -645,6 +645,7 @@ async def get_faq(request: Request):
                 print("✅ Exact match confirmed.")
                 resp_text = format_response(obj)
                 # ✅ Exact-match persona overlay (no rewriting)
+                print("🧪 persona_slice in exact path:", persona_slice)
                 if persona_slice:
                     p_name = persona_slice.get("persona_name") or ""
                     ds = persona_slice.get("decision_style") or ""
