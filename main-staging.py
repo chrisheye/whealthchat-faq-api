@@ -114,6 +114,11 @@ SYSTEM_PROMPT = (
     "If a long-term care calculator is mentioned, refer ONLY to the WhealthChat custom calculator."
 )
 
+def article_for(name: str) -> str:
+    return "an" if name[:1].lower() in {"a","e","i","o","u"} else "a"
+
+
+
 def persona_fields_for_question(raw_q: str) -> dict:
     """
     Returns a dict:
@@ -664,7 +669,9 @@ async def get_faq(request: Request):
                     print("🧪 OVERLAY DEBUG:", {"p_name": p_name, "frag": frag[:120]})
 
                     if frag and p_name:
-                        overlay = f"\n\nWhen working with an **{p_name}**, {frag.lstrip().rstrip('.').lower()}."
+                        article = article_for(p_name)
+                        overlay = f"\n\nWhen working with {article} **{p_name}**, {frag.lstrip().rstrip('.').lower()}."
+
                         marker = "\n\n**💡 COACHING TIP:**"
                         if marker in resp_text:
                             before, after = resp_text.split(marker, 1)
