@@ -665,7 +665,12 @@ async def get_faq(request: Request):
 
                     if frag and p_name:
                         overlay = f"\n\nPERSONA NOTE ({p_name}): {frag}"
-                        resp_text = resp_text + overlay
+                        marker = "\n\n**💡 COACHING TIP:**"
+                        if marker in resp_text:
+                            before, after = resp_text.split(marker, 1)
+                            resp_text = before + "\n\n" + overlay.strip() + marker + after
+                        else:
+                            resp_text = resp_text + "\n\n" + overlay.strip()
 
                 print("🧪 EXACT AFTER OVERLAY (last 300 chars):", resp_text[-300:])
 
