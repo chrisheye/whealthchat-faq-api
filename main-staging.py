@@ -690,7 +690,12 @@ async def get_faq(request: Request):
                     # pick one usable fragment (decision_style first, then primary_concerns)
                     frag = ""
                     if ds:
-                        frag = re.split(r"<br>|\n|•", ds)[0].strip()
+                        ds_clean = re.sub(r"<br\s*/?>", "\n", ds, flags=re.IGNORECASE)
+                        ds_clean = ds_clean.replace("•", "\n").replace("–", "-").replace("—", "-")
+                        lines = [ln.strip(" \t-•") for ln in ds_clean.split("\n") if ln.strip(" \t-•")]
+
+                        frag = lines[0] if lines else ""
+
                     elif pc:
                         frag = re.split(r"<br>|[\n•\-]", pc)[0].strip()
 
