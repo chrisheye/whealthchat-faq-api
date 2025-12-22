@@ -26,36 +26,6 @@ from pathlib import Path
 import json
 import os
 
-PERSONAS_PATH = os.getenv("PERSONAS_PATH", "financial_personas.json")
-
-_PERSONAS_RAW = []          # ✅ always defined
-PERSONA_BY_ID = {}         # ✅ always defined
-
-try:
-    with open(Path(PERSONAS_PATH), "r", encoding="utf-8") as f:
-        _PERSONAS_RAW = json.load(f)
-    print(f"✅ Loaded personas file: {PERSONAS_PATH} (type={type(_PERSONAS_RAW).__name__})")
-except Exception as e:
-    print(f"⚠️ Could not load personas file: {PERSONAS_PATH} — {e}")
-    _PERSONAS_RAW = []  # keep it safe
-
-# Build PERSONA_BY_ID from whatever we loaded (list or dict)
-if isinstance(_PERSONAS_RAW, list):
-    for p in _PERSONAS_RAW:
-        if isinstance(p, dict):
-            pid = (p.get("id") or p.get("name") or "").strip()
-            if pid:
-                PERSONA_BY_ID[pid.lower()] = p
-elif isinstance(_PERSONAS_RAW, dict):
-    for k, p in _PERSONAS_RAW.items():
-        if isinstance(p, dict):
-            pid = (p.get("id") or p.get("name") or k or "").strip()
-            if pid:
-                PERSONA_BY_ID[pid.lower()] = p
-
-print(f"🧠 PERSONA_BY_ID size: {len(PERSONA_BY_ID)}")
-# ---- end persona load ----
-
 SEEN_FAQ_CLIENTS = set()
 SEEN_SESSIONS = set()
 
@@ -164,23 +134,106 @@ def persona_fields_for_question(raw_q: str) -> dict:
     # Default: keep it light
     return {"topic": "general", "fields": ["decision_style"]}
 
-PERSONAS_PATH = os.getenv("PERSONAS_PATH", "financial_personas.json")  # or whatever file you have
-with open(PERSONAS_PATH, "r", encoding="utf-8") as f:
-    _PERSONAS_RAW = json.load(f)
+PERSONAS_PATH = os.getenv("PERSONAS_PATH", "financial_personas.json")
+
+_PERSONAS_RAW = []      # always defined
+PERSONA_BY_ID = {}     # always defined
+
+try:
+    with open(Path(PERSONAS_PATH), "r", encoding="utf-8") as f:
+        _PERSONAS_RAW = json.load(f)
+    print(f"✅ Loaded personas file: {PERSONAS_PATH} (type={type(_PERSONAS_RAW).__name__})")
+except Exception as e:
+    print(f"⚠️ Could not load personas file: {PERSONAS_PATH} — {e}")
+    _PERSONAS_RAW = []
 
 # Build an ID->persona dict that works for either list or dict JSON shapes
-PERSONA_BY_ID = {}
 if isinstance(_PERSONAS_RAW, list):
     for p in _PERSONAS_RAW:
-        pid = (p.get("id") or p.get("name") or "").strip()
-        if pid:
-            PERSONA_BY_ID[pid.lower()] = p
+        if isinstance(p, dict):
+            pid = (p.get("id") or p.get("name") or "").strip()
+            if pid:
+                PERSONA_BY_ID[pid.lower()] = p
 elif isinstance(_PERSONAS_RAW, dict):
     for k, p in _PERSONAS_RAW.items():
-        pid = ((p or {}).get("id") or (p or {}).get("name") or k or "").strip()
-        if pid and isinstance(p, dict):
-            PERSONA_BY_ID[pid.lower()] = p
+        if isinstance(p, dict):
+            pid = (p.get("id") or p.get("name") or k or "").strip()
+            if pid:
+                PERSONA_BY_ID[pid.lower()] = p
 
+def _clean_persona_frag(text: str) -> str:
+    """
+    Take decision_style / concerns and extract a clean first usable sentence/line
+    WITHOUT breaking hyphenated phrases like '12- to 24-month'.
+    """
+    if not text:
+        return ""
+
+    # Convert <br> to newlines
+    t = re.sub(r"<br\s*/?>", "\n", str(text), flags=re.IGNORECASE)
+
+    # Normalize bullets to newlines (do NOT split on hyphen)
+    t = t.replace("•", "\n")
+
+    # Split on newlines only (keeps hyphens inside phrases)
+    lines = [ln.strip(" \t•") for ln in t.split("\n") if ln.strip(" \t•")]
+    frag = lines[0] if lines else ""
+
+    # Collapse whitespace
+    frag = re.sub(r"\s+", " ", frag).strip()
+
+    # Remove trailing period so we can add exactly one at the end
+    frag = frag.rstrip(".")
+
+    return frag
+
+
+def _lowercase_first_char(s: str) -> str:
+    if not s:
+        return s
+    return s[0].lower() + s[1:]
+
+
+def build_persona_overlay_sentence(persona_slice: dict) -> str:
+    """
+    Returns one sentence like:
+    'When working with a **Empowered Widow**, be patient and paced...'
+    """
+    if not isinstance(persona_slice, dict) or not persona_slice:
+        return ""
+
+    p_name = (persona_slice.get("persona_name") or persona_slice.get("name") or "").strip()
+    if not p_name:
+        return ""
+
+    ds = (persona_slice.get("decision_style") or "").strip()
+    pc = (persona_slice.get("primary_concerns") or "").strip()
+
+    frag = _clean_persona_frag(ds) or _clean_persona_frag(pc)
+    if not frag:
+        return ""
+
+    article = article_for(p_name)
+    frag = _lowercase_first_char(frag)
+
+    return f"When working with {article} **{p_name}**, {frag}."
+
+
+def insert_overlay_before_coaching_tip(resp_text: str, overlay_sentence: str) -> str:
+    """
+    Inserts the overlay sentence in the MAIN ANSWER (immediately before the coaching tip label).
+    If there is no coaching tip, appends at the end.
+    """
+    if not overlay_sentence:
+        return resp_text
+
+    marker = "**💡 COACHING TIP:**"
+    if marker in resp_text:
+        before, after = resp_text.split(marker, 1)
+        before = before.rstrip()
+        return f"{before}\n\n{overlay_sentence}\n\n{marker}{after}"
+    else:
+        return resp_text.rstrip() + "\n\n" + overlay_sentence
 
 
 def slice_persona(persona: dict, fields: list[str]) -> dict:
@@ -577,8 +630,6 @@ async def get_faq(request: Request):
     persona_applied_in_query = raw_q_original.lower().startswith("persona context")
     # ✅ Do NOT wipe persona. Persona is controlled by placeholder/default guards only.
 
-
-
     def is_template_persona(p: dict) -> bool:
         pid = (p.get("id") or "").strip().lower()
         nm  = (p.get("name") or p.get("client_name") or "").strip().lower()
@@ -625,11 +676,13 @@ async def get_faq(request: Request):
 
         combined_filt = and_filters(user_filt, tenant_filt)
 
-        filter = Filter.by_property("question").equal(raw_q.strip()) & combined_filt
-        print("🔎 exact-match allowed_sources:", allowed)
+        exact_filter = and_filters(
+            Filter.by_property("question").equal(raw_q.strip()),
+            combined_filt
+        )
 
         exact_res = collection.query.fetch_objects(
-            filters=filter,
+            filters=exact_filter,
             return_properties=["question", "answer", "coachingTip", "source", "user"],
             limit=12
         )
@@ -649,60 +702,11 @@ async def get_faq(request: Request):
                     continue
                 print("✅ Exact match confirmed.")
                 resp_text = format_response(obj)
+                # ✅ Exact-match persona overlay (ONE sentence, inserted before Coaching Tip)
+                overlay_sentence = build_persona_overlay_sentence(persona_slice)
+                resp_text = insert_overlay_before_coaching_tip(resp_text, overlay_sentence)
+
                 print("🧪 EXACT BEFORE OVERLAY (last 200 chars):", resp_text[-200:])
-
-                # ✅ Exact-match persona overlay (no rewriting)
-                if persona_slice:
-                    p_name = persona_slice.get("persona_name") or persona_slice.get("name") or ""
-                    ds = persona_slice.get("decision_style") or ""
-                    pc = persona_slice.get("primary_concerns") or ""
-
-                    frag = ""
-                    if ds:
-                        parts = [p.strip() for p in re.split(r"<br>|\n|•|-", ds) if p.strip()]
-                        frag = parts[0] if parts else ""
-                    elif pc:
-                        parts = [p.strip() for p in re.split(r"<br>|\n|•|-", pc) if p.strip()]
-                        frag = parts[0] if parts else ""
-
-
-                    print("🧪 OVERLAY DEBUG:", {"p_name": p_name, "frag": frag[:120]})
-
-                    if frag and p_name:
-                        article = article_for(p_name)
-                        overlay = f"\n\nWhen working with {article} **{p_name}**, {frag.lstrip().rstrip('.').lower()}."
-
-                        marker = "\n\n**💡 COACHING TIP:**"
-                        if marker in resp_text:
-                            before, after = resp_text.split(marker, 1)
-                            resp_text = before + "\n\n" + overlay.strip() + marker + after
-                        else:
-                            resp_text = resp_text + "\n\n" + overlay.strip()
-
-                print("🧪 EXACT AFTER OVERLAY (last 300 chars):", resp_text[-300:])
-
-                print("🧪 persona_slice in exact path:", persona_slice)
-                if persona_slice:
-                    p_name = persona_slice.get("persona_name") or ""
-                    ds = persona_slice.get("decision_style") or ""
-                    pc = persona_slice.get("primary_concerns") or ""
-
-                    # pick one usable fragment (decision_style first, then primary_concerns)
-                    frag = ""
-                    if ds:
-                        ds_clean = re.sub(r"<br\s*/?>", "\n", ds, flags=re.IGNORECASE)
-                        ds_clean = ds_clean.replace("•", "\n").replace("–", "-").replace("—", "-")
-                        lines = [ln.strip(" \t-•") for ln in ds_clean.split("\n") if ln.strip(" \t-•")]
-
-                        frag = lines[0] if lines else ""
-
-                    elif pc:
-                        frag = re.split(r"<br>|[\n•\-]", pc)[0].strip()
-
-                    if frag and p_name:
-                        overlay = f"\n\n*Persona note ({p_name}): {frag}*"
-                        resp_text = resp_text + overlay                
-                    print("🧪 OVERLAY FRAG RAW:", repr(frag))
 
                 print("🧪 EXACT PATH persona_present:", bool(persona))
                 resp_text = await finalize_response(
@@ -748,6 +752,10 @@ async def get_faq(request: Request):
                 if src_ok and user_ok:
                     print("✅ Exact-match override via vector results.")
                     resp_text = format_response(obj)
+
+                    overlay_sentence = build_persona_overlay_sentence(persona_slice)
+                    resp_text = insert_overlay_before_coaching_tip(resp_text, overlay_sentence)
+
                     resp_text = await finalize_response(
                         resp_text, row_user, audience_block, persona, persona_block,
                         raw_q=raw_q,
