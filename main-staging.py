@@ -282,10 +282,11 @@ async def get_faq(request: Request):
                 f"{audience_block}\n\n"
                 f"Question: {raw_q}\n\n"
                 f"Keep the response practical, conversational, and focused on helping the advisor guide a real client decision. "
-                f"Answer the question directly based on the question itself, not on any background context. "
-                f"If background context (such as assessment results) is included, use it only if it is clearly necessary and do not reference it explicitly unless asked. "
-                f"Do not assume gaps, deficiencies, or 'low readiness' unless the question specifically asks for that analysis. "
-                f"Prioritize how the advisor should open, frame, and guide the conversation."
+                f"The question is the primary task. Background context is secondary and optional. "
+                f"Do not use background context unless the question explicitly asks for analysis of that context. "
+                f"In most cases, ignore assessment results and do not reference them. "
+                f"Do not assume gaps, deficiencies, or 'low readiness' unless explicitly stated in the question. "
+                f"Focus on how the advisor should open, frame, and guide the conversation in general terms."
             )
 
             reply = openai.ChatCompletion.create(
