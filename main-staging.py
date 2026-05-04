@@ -282,8 +282,9 @@ async def get_faq(request: Request):
                 f"{audience_block}\n\n"
                 f"Question: {raw_q}\n\n"
                 f"Answer the question directly and clearly. "
-                f"If relevant background context is included in the question, you may use it, but do not assume it is the primary focus. "
-                f"Keep the response practical, supportive, and focused on helping the advisor."
+                f"Keep the response practical, conversational, and focused on helping the advisor guide a real client decision. "
+                f"If background context (such as assessment results) is included, do not let it dominate the response or drive a rigid 'fix this first' sequence. "
+                f"Prioritize how the advisor should frame the decision and conversation."
             )
 
             reply = openai.ChatCompletion.create(
