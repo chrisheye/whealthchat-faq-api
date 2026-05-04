@@ -281,9 +281,9 @@ async def get_faq(request: Request):
                 f"{SYSTEM_PROMPT}\n\n"
                 f"{audience_block}\n\n"
                 f"Question: {raw_q}\n\n"
-                f"The advisor has provided assessment context in the question. "
+                f"The advisor may have some background context about the client. "
                 f"Use the assessment context as helpful background, but do not let it dominate the response. "
-                f"Do not rely on generic FAQ content. "
+                f"Use general knowledge and patterns where helpful, but do not let generic content override the specific question or context. "
                 f"Do not introduce unrelated topics such as long-term care, Medicare, caregiving, or health costs unless explicitly asked. "
                 f"Provide general guidance first, and weave in the most relevant assessment insights only where they naturally support the advice."
             )
