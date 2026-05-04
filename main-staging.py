@@ -281,12 +281,13 @@ async def get_faq(request: Request):
                 f"{SYSTEM_PROMPT}\n\n"
                 f"{audience_block}\n\n"
                 f"Question: {raw_q}\n\n"
+                f"Adopt a natural, conversational tone from the first response. Do not 'ramp up' or adjust tone over time. Be consistent from the start. "
                 f"Keep the response practical, conversational, and focused on helping the advisor guide a real client decision. "
                 f"The question is the primary task. Background context is secondary and optional. "
                 f"Do not use background context unless the question explicitly asks for analysis of that context. "
                 f"In most cases, ignore assessment results and do not reference them. "
                 f"Do not assume gaps, deficiencies, or 'low readiness' unless explicitly stated in the question. "
-                f"Focus on how the advisor should open, frame, and guide the conversation in general terms."
+                f"Focus on how the advisor should open, frame, and guide the conversation in general terms. "
                 f"For broad or open-ended questions, provide general, flexible guidance that could apply to many clients, rather than tailoring the response to specific background context."
             )
 
