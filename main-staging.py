@@ -276,11 +276,14 @@ async def get_faq(request: Request):
 
         combined_filt = and_filters(user_filt, tenant_filt)
 
+    if has_assessment_context:
+        objects = []
+    else:
         vec_res = collection.query.near_text(
             query=raw_q,
             filters=combined_filt,
             return_metadata=["distance"],
-            return_properties=["question", "answer", "coachingTip", "user", "source"],  # include source for debugging
+            return_properties=["question", "answer", "coachingTip", "user", "source"],
             limit=3
         )
         objects = vec_res.objects
