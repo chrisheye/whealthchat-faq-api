@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from weaviate.classes.query import Filter
 from weaviate.classes.init import AdditionalConfig
 from weaviate.auth import AuthApiKey
+import weaviate
 import openai
 import requests
 import os
@@ -13,22 +14,14 @@ import time
 import logging
 import asyncio
 from contextlib import suppress
+
+
 import json, os
 from pathlib import Path
 
 ACCESS_MAP_PATH = os.getenv("ACCESS_MAP_PATH", "access_map.json")
 with open(Path(ACCESS_MAP_PATH), "r", encoding="utf-8") as f:
     ACCESS_MAP = json.load(f)
-
-
-# ---- Persona file load (SAFE) ----
-from pathlib import Path
-import json
-import os
-
-SEEN_FAQ_CLIENTS = set()
-SEEN_SESSIONS = set()
-
 
 def allowed_sources_for_request(request):
     tenant = request.headers.get("X-Tenant") or request.query_params.get("tenant") or "public"
@@ -37,6 +30,7 @@ def allowed_sources_for_request(request):
     if "WhealthChat" not in allowed:
         allowed = allowed + ["WhealthChat"]
     return allowed
+
 
 def source_filter(allowed_sources: list[str]):
     return Filter.by_property("source").contains_any(allowed_sources)
@@ -52,217 +46,34 @@ def and_filters(*filters):
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+
+
+
 SYSTEM_PROMPT = (
     "You are a helpful assistant. Respond using Markdown with consistent formatting.\n\n"
     "Answer the user's question clearly and supportively.\n"
-    "Then provide ONE Coaching Tip using this exact label: **💡 COACHING TIP:** (inline, not as a heading).\n\n"
-
-    "STRICT COACHING TIP LIMITS:\n"
-    "- Maximum 2 paragraphs total.\n"
-    "- Each paragraph must be 1–2 sentences.\n"
-    "- Do NOT repeat persona background already stated in the main answer.\n"
-    "- Focus on advisor behavior, not client biography.\n"
-    "- Do NOT include planning steps (e.g., consolidation, beneficiaries, timelines) in the Coaching Tip.\n\n"
-
+    "Then provide ONE **Coaching Tip** in bold using this exact label: **Coaching Tip:** (inline, not as a heading).\n\n"
     "🚫 Do NOT include checklists, links, downloads, or tools in the Coaching Tip. Those belong in the main answer ONLY.\n"
     "✅ Preserve links and bold formatting in the main answer.\n"
     "✅ Include emojis if they appear in the source content.\n\n"
-
     "🔁 FORMATTING RULES:\n"
     "1. Break both the main answer and the Coaching Tip into short, readable paragraphs.\n"
     "2. Use line breaks between paragraphs.\n"
     "3. No paragraph should be more than 3 sentences long.\n"
     "4. NEVER place links or tools inside the Coaching Tip.\n\n"
-
     "💬 TONE:\n"
     "Use warm, encouraging language. Avoid robotic or clinical phrasing.\n"
     "Acknowledge that many users are navigating emotional or sensitive topics.\n"
     "Encourage users to seek help and **never worry alone** when appropriate.\n\n"
-
     "**IMPORTANT REMINDER:**\n"
+    "Break long Coaching Tips into multiple short paragraphs, each no more than 3 sentences.\n"
     "Summarize multiple tips into one helpful, well-structured Coaching Tip for the user.\n"
     "If a long-term care calculator is mentioned, refer ONLY to the WhealthChat custom calculator."
 )
 
-def article_for(name: str) -> str:
-    return "an" if name[:1].lower() in {"a","e","i","o","u"} else "a"
-
-
-
-def persona_fields_for_question(raw_q: str) -> dict:
-    """
-    Returns a dict:
-      {"topic": "<label>", "fields": ["life_stage", "primary_concerns", ...]}
-    The goal: only pass the *relevant* persona fields to the LLM for this question.
-    """
-    q = (raw_q or "").lower()
-
-    TOPICS = [
-        # Estate / authority / documents
-        ("authority_docs", [
-            r"\bpoa\b", r"power of attorney", r"healthcare proxy", r"proxy",
-            r"advance directive", r"living will", r"trust", r"will\b",
-            r"beneficiar", r"executor", r"trustee", r"incapac", r"guardianship"
-        ], ["life_stage", "primary_concerns"]),
-
-        # Health events / caregiving / LTC
-        ("health_caregiving", [
-            r"caregiv", r"memory care", r"assisted living", r"skilled nursing",
-            r"long[-\s]?term care", r"\bltc\b", r"dementia", r"alz", r"stroke",
-            r"hospital", r"diagnos", r"declin", r"cognitive"
-        ], ["life_stage", "primary_concerns"]),
-
-        # Cash-flow / income / retirement mechanics
-        ("income_cashflow", [
-            r"cash flow", r"budget", r"spend", r"debt", r"emergency fund",
-            r"retire", r"social security", r"pension", r"annuit", r"rmd",
-            r"withdraw", r"income", r"tax"
-        ], ["primary_concerns", "decision_style"]),
-
-        # Behavior / decision overwhelm / anxiety
-        ("decision_behavior", [
-            r"overwhelm", r"anx", r"stress", r"panic", r"avoid",
-            r"confident", r"decision", r"procrast", r"motivat",
-            r"impuls", r"regret"
-        ], ["decision_style", "primary_concerns"]),
-    ]
-
-    for topic, patterns, fields in TOPICS:
-        if any(re.search(p, q) for p in patterns):
-            return {"topic": topic, "fields": fields}
-
-    # Default: keep it light
-    return {"topic": "general", "fields": ["decision_style"]}
-
-PERSONAS_PATH = os.getenv("PERSONAS_PATH", "financial_personas.json")
-
-_PERSONAS_RAW = []      # always defined
-PERSONA_BY_ID = {}     # always defined
-
-try:
-    with open(Path(PERSONAS_PATH), "r", encoding="utf-8") as f:
-        _PERSONAS_RAW = json.load(f)
-    print(f"✅ Loaded personas file: {PERSONAS_PATH} (type={type(_PERSONAS_RAW).__name__})")
-except Exception as e:
-    print(f"⚠️ Could not load personas file: {PERSONAS_PATH} — {e}")
-    _PERSONAS_RAW = []
-
-# Build an ID->persona dict that works for either list or dict JSON shapes
-if isinstance(_PERSONAS_RAW, list):
-    for p in _PERSONAS_RAW:
-        if isinstance(p, dict):
-            pid = (p.get("id") or p.get("name") or "").strip()
-            if pid:
-                PERSONA_BY_ID[pid.lower()] = p
-elif isinstance(_PERSONAS_RAW, dict):
-    for k, p in _PERSONAS_RAW.items():
-        if isinstance(p, dict):
-            pid = (p.get("id") or p.get("name") or k or "").strip()
-            if pid:
-                PERSONA_BY_ID[pid.lower()] = p
-
-def _clean_persona_frag(text: str) -> str:
-    """
-    Take decision_style / concerns and extract a clean first usable sentence/line
-    WITHOUT breaking hyphenated phrases like '12- to 24-month'.
-    """
-    if not text:
-        return ""
-
-    # Convert <br> to newlines
-    t = re.sub(r"<br\s*/?>", "\n", str(text), flags=re.IGNORECASE)
-
-    # Normalize bullets to newlines (do NOT split on hyphen)
-    t = t.replace("•", "\n")
-
-    # Split on newlines only (keeps hyphens inside phrases)
-    lines = [ln.strip(" \t•") for ln in t.split("\n") if ln.strip(" \t•")]
-    frag = lines[0] if lines else ""
-
-    # Collapse whitespace
-    frag = re.sub(r"\s+", " ", frag).strip()
-
-    # Remove trailing period so we can add exactly one at the end
-    frag = frag.rstrip(".")
-
-    return frag
-
-
-def _lowercase_first_char(s: str) -> str:
-    if not s:
-        return s
-    return s[0].lower() + s[1:]
-
-
-def build_persona_overlay_sentence(persona_slice: dict) -> str:
-    """
-    Returns one sentence like:
-    'When working with a **Empowered Widow**, be patient and paced...'
-    """
-    if not isinstance(persona_slice, dict) or not persona_slice:
-        return ""
-
-    p_name = (persona_slice.get("persona_name") or persona_slice.get("name") or "").strip()
-    if not p_name:
-        return ""
-
-    ds = (persona_slice.get("decision_style") or "").strip()
-    pc = (persona_slice.get("primary_concerns") or "").strip()
-
-    frag = _clean_persona_frag(ds) or _clean_persona_frag(pc)
-    if not frag:
-        return ""
-
-    article = article_for(p_name)
-    frag = _lowercase_first_char(frag)
-
-    return f"When working with {article} **{p_name}**, {frag}."
-
-
-def insert_overlay_before_coaching_tip(resp_text: str, overlay_sentence: str) -> str:
-    """
-    Inserts the overlay sentence in the MAIN ANSWER (immediately before the coaching tip label).
-    If there is no coaching tip, appends at the end.
-    """
-    if not overlay_sentence:
-        return resp_text
-
-    marker = "**💡 COACHING TIP:**"
-    if marker in resp_text:
-        before, after = resp_text.split(marker, 1)
-        before = before.rstrip()
-        return f"{before}\n\n{overlay_sentence}\n\n{marker}{after}"
-    else:
-        return resp_text.rstrip() + "\n\n" + overlay_sentence
-
-
-def slice_persona(persona: dict, fields: list[str]) -> dict:
-    """Return only the persona fields we want the model to see for this question."""
-    if not isinstance(persona, dict) or not persona:
-        return {}
-
-    keep = {}
-
-    # Always keep a usable name/id for referencing
-    name = (persona.get("client_name") or persona.get("name") or persona.get("id") or "").strip()
-    if name:
-        keep["name"] = name
-
-    # Only include allowed fields if present
-    if "life_stage" in fields and (persona.get("life_stage") or "").strip():
-        keep["life_stage"] = (persona.get("life_stage") or "").strip()
-
-    if "primary_concerns" in fields and (persona.get("primary_concerns") or "").strip():
-        keep["primary_concerns"] = (persona.get("primary_concerns") or "").strip()
-
-    if "decision_style" in fields and (persona.get("decision_style") or "").strip():
-        keep["decision_style"] = (persona.get("decision_style") or "").strip()
-
-    return keep
-
-
 def normalize(text):
     return re.sub(r"[^\w\s]", "", text.lower().strip())
+
 PROTECTED_BRANDS = {"pendleton", "pendleton square"}  # lowercase
 BRAND_TO_SOURCE = {
     "pendleton": "pendleton",
@@ -289,15 +100,17 @@ def sanitize_question_for_disallowed_brands(question: str, allowed_sources: list
             q = replace_brand(q, brand, patterns)
     return q
 
+
 # --- APP SETUP ---
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://whealthchat.ai", "https://staging.whealthchat.ai", "https://horizons.whealthchat.ai", "https://demo.whealthchat.ai","https://demo1.whealthchat.ai","https://pendleton.whealthchat.ai"],
+    allow_origin_regex=r"https://([a-z0-9-]+\.)?whealthchat\.ai",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 WEAVIATE_CLUSTER_URL = os.getenv("WEAVIATE_CLUSTER_URL")
 WEAVIATE_API_KEY = os.getenv("WEAVIATE_API_KEY")
@@ -341,33 +154,17 @@ def version_check():
     return {"status": "Running", "message": "✅ CORS enabled version"}
 
 
-async def rewrite_with_tone(text, audience_block, persona_block: str = ""):
-    if not audience_block and not persona_block:
+async def rewrite_with_tone(text, audience_block):
+    if not audience_block:
         return text
-
-    persona_instruction = ""
-    if persona_block.strip():
-        persona_instruction = (
-            "ADD ONE explicit persona-tailored sentence in the MAIN ANSWER (not the Coaching Tip).\n"
-            "The rewritten answer may include ONE brief sentence that explicitly names the persona, using natural language such as "
-            "'For a client like the <persona name>,' or 'When working with a <persona name>,'. "
-            "Do NOT use the word 'lens' or describe a framework.\n"
-            "Do NOT force a persona mention if it feels unnatural.\n"
-        )
 
     prompt = (
         f"{audience_block}\n\n"
-        f"{persona_block}\n\n"
-        "Rewrite the following answer so it matches this audience"
-        + (" and persona.\n" if persona_block.strip() else ".\n")
-        + f"{persona_instruction}"
-        + "It should reflect constraints around tone, pacing, support level, and examples.\n"
-        + "Keep all key facts and recommendations the same.\n"
-        + "Do NOT restate persona background.\n"
-        + "Do NOT add new tools or links, and do NOT remove any that are already present.\n\n"
-        + f"ANSWER:\n{text}"
+        "Rewrite the following answer to match this audience tone. "
+        "Do NOT change the meaning. Do NOT add new content. "
+        "Just adjust pronouns and framing.\n\n"
+        f"ANSWER:\n{text}"
     )
-
 
     reply = openai.ChatCompletion.create(
         model="gpt-4o-mini",
@@ -379,183 +176,10 @@ async def rewrite_with_tone(text, audience_block, persona_block: str = ""):
     return reply.choices[0].message.content.strip()
 
 
-async def finalize_response(
-    text: str,
-    row_user: str,
-    audience_block: str,
-    persona: dict,
-    persona_block: str,
-    raw_q: str = "",
-    allow_rewrite: bool = True
-) -> str:
-
-    # 1) Rewrite tone ONLY if allowed (never for exact matches)
-    if allow_rewrite:
-        if persona_block:
-            text = await rewrite_with_tone(text, audience_block, persona_block)
-        elif audience_block:
-            text = await rewrite_with_tone(text, audience_block)
-
-    # 3) OPTIONAL: show persona label (visible) so you can confirm it’s being applied
-    if os.getenv("DEBUG_PERSONA_APPLIED", "0") == "1":
-        if persona and isinstance(persona, dict):
-            pname = (persona.get("client_name") or persona.get("name") or persona.get("id") or "").strip()
-            if pname:
-                text = f"Persona applied: {pname}\n\n{text}"
-    return text
-
-
-def enforce_coaching_tip_rules(text: str) -> str:
-    """
-    Enforces Coaching Tip constraints WITHOUT changing retrieval or logic.
-    Rules:
-    - Max 3 paragraphs
-    - Each paragraph max 3 sentences
-    """
-    marker = "**💡 COACHING TIP:**"
-    if marker not in text:
-        return text
-
-    before, after = text.split(marker, 1)
-
-    # Normalize paragraphs
-    paragraphs = [p.strip() for p in after.split("\n\n") if p.strip()]
-
-    trimmed_paragraphs = []
-    for p in paragraphs[:3]:  # max 3 paragraphs
-        sentences = re.split(r'(?<=[.!?])\s+', p)
-        trimmed = " ".join(sentences[:3])  # max 3 sentences
-        trimmed_paragraphs.append(trimmed)
-
-    cleaned_tip = "\n\n".join(trimmed_paragraphs)
-
-    return f"{before}{marker} {cleaned_tip}"
-
-
-
-
-def is_default_persona(p: dict) -> bool:
-    pid = (p.get("id") or "").strip().lower()
-    nm  = (p.get("name") or p.get("client_name") or "").strip().lower()
-
-    # Explicit placeholders only
-    bad = {
-        "", "default", "default persona", "persona",
-        "select persona", "choose persona",
-        "none", "no persona", "unknown", "n/a"
-    }
-
-    # 🚫 DO NOT treat "|template" as default
-    if pid in bad or nm in bad:
-        return True
-
-    if pid.startswith("select") or nm.startswith("select"):
-        return True
-
-    return False
-
-# --- Step B: topic-gated persona_block (no taglines) ---
-
-def detect_topic(raw_q: str) -> str:
-    q = (raw_q or "").lower()
-    if any(t in q for t in ["poa", "power of attorney", "healthcare proxy", "incapac", "capacity", "diminish", "dementia", "alz"]):
-        return "capacity"
-    if any(t in q for t in ["caregiving", "caregiver", "memory care", "assisted living", "nursing home", "home care"]):
-        return "caregiving"
-    if any(t in q for t in ["long-term care", "ltc", "long term care", "care costs", "medicaid"]):
-        return "care_costs"
-    if any(t in q for t in ["will", "trust", "estate", "inheritance", "beneficiary", "probate"]):
-        return "estate"
-    if any(t in q for t in ["retirement", "income", "social security", "annuity", "rmd"]):
-        return "retirement_income"
-    return "general"
-
-def persona_slice_for_topic(persona: dict, topic: str) -> dict:
-    # Pull only the persona fields that matter for THIS topic.
-    # (These keys assume your persona JSON already contains these fields;
-    # missing keys just become empty strings.)
-    def g(k): return (persona.get(k) or "").strip()
-
-    common = {
-        "persona_name": (persona.get("client_name") or persona.get("name") or persona.get("id") or "").strip(),
-        "life_stage": g("life_stage"),
-        "primary_concerns": g("primary_concerns"),
-        "decision_style": g("decision_style"),
-    }
-
-    topic_map = {
-        "capacity": {
-            "capacity_triggers": g("capacity_triggers"),
-            "trusted_contacts": g("trusted_contacts"),
-            "decision_support": g("decision_support"),
-        },
-        "caregiving": {
-            "caregiving_situation": g("caregiving_situation"),
-            "caregiving_constraints": g("caregiving_constraints"),
-            "family_dynamics": g("family_dynamics"),
-        },
-        "care_costs": {
-            "cost_anxieties": g("cost_anxieties"),
-            "coverage_gaps": g("coverage_gaps"),
-            "risk_tolerance": g("risk_tolerance"),
-        },
-        "estate": {
-            "legacy_goals": g("legacy_goals"),
-            "family_complexity": g("family_complexity"),
-            "document_readiness": g("document_readiness"),
-        },
-        "retirement_income": {
-            "income_style": g("income_style"),
-            "spending_patterns": g("spending_patterns"),
-            "security_preferences": g("security_preferences"),
-        },
-        "general": {
-            # keep it light: only common fields
-        }
-    }
-
-    sliced = {**common, **topic_map.get(topic, {})}
-
-    # Drop empty values so the block stays compact
-    return {k: v for k, v in sliced.items() if str(v).strip()}
-
-
-# --- end Step B ---
-
 @app.post("/faq")
 async def get_faq(request: Request):
     body = await request.json()
-    session_id = request.headers.get("X-Session-Id") or body.get("session_id") or ""
-    is_new_session = False
-    if session_id and session_id not in SEEN_SESSIONS:
-        SEEN_SESSIONS.add(session_id)
-        is_new_session = True
-
     raw_q = body.get("query", "").strip()
-
-    # 🧠 BACKEND FIRST-REQUEST GUARD (exact placement)
-    client_ip = request.client.host if request.client else "unknown"
-    ua = request.headers.get("user-agent", "unknown")
-    client_key = f"{client_ip}|{ua}"
-
-    first_time = client_key not in SEEN_FAQ_CLIENTS
-    if first_time:
-        SEEN_FAQ_CLIENTS.add(client_key)
-
-
-    # ✅ SAFEGUARD: if frontend prepends persona text into query, extract the real question
-    if raw_q.lower().startswith("persona context"):
-        m = re.search(r"\b(what|how|why|when|where|who|can|should|do|is|are)\b.*$", raw_q, re.IGNORECASE)
-        if m:
-            raw_q = m.group(0).strip()
-
-
-    print("📤 payload body:", body)  # <-- add this line
-    print("🧾 RAW /faq body keys:", list(body.keys()))
-    print("🧾 RAW query (first 200 chars):", raw_q[:200])
-    print("🧾 RAW persona present?:", bool(body.get("persona")))
-    print("🧾 RAW persona payload:", body.get("persona"))
-
     if raw_q.startswith("{"):
         return {"response": "⚠️ Invalid query format. Please ask a plain language question."}
     requested_user = body.get("user", "").strip().lower()
@@ -591,78 +215,9 @@ async def get_faq(request: Request):
             "Be clear, empathetic, and action-oriented with practical next steps."
         )
 
-    # ---- Persona context block ----
-    persona = body.get("persona") or {}
+    # -------------------------------------------------------------------
 
-
-    print("🧾 session_id:", session_id, "is_new_session:", is_new_session, "persona_in_payload:", bool(body.get("persona")))
-
-
-    # HARD BACKEND GUARD: drop placeholder/default personas
-    if not isinstance(persona, dict):
-        persona = {}
-
-    pid = (persona.get("id") or "").strip().lower()
-    pname = (persona.get("name") or persona.get("client_name") or "").strip().lower()
-
-    if pid in {"", "default", "default persona"}:
-        persona = {}
-
-
-    # ✅ Drop placeholder persona so answers don't start with “default”
-    if isinstance(persona, dict) and persona and is_default_persona(persona):
-        persona = {}
-
-    # ✅ ENRICH PERSONA: if frontend only sends {"id": "..."} load full persona fields
-    # (Requires PERSONA_BY_ID to be defined at startup; I'll show that next if needed.)
-    if isinstance(persona, dict) and persona:
-        pid_full = (persona.get("id") or persona.get("name") or persona.get("client_name") or "").strip()
-        if pid_full:
-            full = PERSONA_BY_ID.get(pid_full.lower())
-            if isinstance(full, dict):
-                persona = {**full, **persona}  # keep any fields frontend already sent
-
-    print("🧩 persona keys after enrichment:", sorted(list(persona.keys()))[:30])
-
-    persona_block = ""  # define once
-
-    raw_q_original = (body.get("query") or "").strip()
-    persona_applied_in_query = raw_q_original.lower().startswith("persona context")
-    # ✅ Do NOT wipe persona. Persona is controlled by placeholder/default guards only.
-
-    def is_template_persona(p: dict) -> bool:
-        pid = (p.get("id") or "").strip().lower()
-        nm  = (p.get("name") or p.get("client_name") or "").strip().lower()
-        return ("template" in pid) or ("template" in nm) or ("|template" in pid)
-
-    def has_real_persona_fields(p: dict) -> bool:
-        # Treat "id" as real so personas like {"id":"Resilient Partner"} are preserved
-        return any([
-            (p.get("id") or "").strip(),
-            (p.get("client_name") or "").strip(),
-            (p.get("name") or "").strip(),
-            (p.get("life_stage") or "").strip(),
-            (p.get("primary_concerns") or "").strip(),
-            (p.get("decision_style") or "").strip(),
-        ])
-
-    # Step B: compute topic + persona_slice (topic-gated)
-    topic = detect_topic(raw_q)
-    persona_slice = persona_slice_for_topic(persona, topic)
-
-
-    # Build persona_block only if persona is real (after the guard)
-    if isinstance(persona, dict) and persona and has_real_persona_fields(persona):
-        # Use only the topic-gated slice (not the full persona)
-        persona_block = "Persona context (use lightly; do not restate):\n"
-        persona_block += f"- Topic: {topic}\n"
-        for k, v in persona_slice.items():
-            persona_block += f"- {k}: {v}\n"
-    else:
-        persona = {}
-        persona_block = ""
-
- 
+    
     if not raw_q:
         raise HTTPException(status_code=400, detail="Missing 'query' in request body.")
 
@@ -676,19 +231,16 @@ async def get_faq(request: Request):
 
         combined_filt = and_filters(user_filt, tenant_filt)
 
-        exact_filter = and_filters(
-            Filter.by_property("question").equal(raw_q.strip()),
-            combined_filt
-        )
+        filter = Filter.by_property("question").equal(raw_q.strip()) & combined_filt
+        print("🔎 exact-match allowed_sources:", allowed)
 
         exact_res = collection.query.fetch_objects(
-            filters=exact_filter,
+            filters=filter,
             return_properties=["question", "answer", "coachingTip", "source", "user"],
             limit=12
         )
         
         print("📦 exact sources:", [o.properties.get("source") for o in exact_res.objects])
-        print("🧪 persona_applied_in_query:", persona_applied_in_query, "persona_kept:", bool(persona), "pid:", (persona.get("id") if isinstance(persona, dict) else None))
 
         for obj in exact_res.objects:
             db_q = obj.properties.get("question", "").strip()
@@ -700,23 +252,16 @@ async def get_faq(request: Request):
                 if src not in allowed_lower:
                     print("⛔ blocked exact-match source:", src, "allowed:", allowed)
                     continue
+
                 print("✅ Exact match confirmed.")
                 resp_text = format_response(obj)
-                # ✅ Exact-match persona overlay (ONE sentence, inserted before Coaching Tip)
-                overlay_sentence = build_persona_overlay_sentence(persona_slice)
-                resp_text = insert_overlay_before_coaching_tip(resp_text, overlay_sentence)
 
-                print("🧪 EXACT BEFORE OVERLAY (last 200 chars):", resp_text[-200:])
-
-                print("🧪 EXACT PATH persona_present:", bool(persona))
-                resp_text = await finalize_response(
-                    resp_text, row_user, audience_block, persona, persona_block,
-                    raw_q=raw_q,
-                    allow_rewrite=False
-                )
-                print("🧾 EXACT RETURN (last 300 chars):", resp_text[-300:])
+                # ✅ Rewrite tone ONLY when user = both
+                if row_user == "both":
+                    resp_text = await rewrite_with_tone(resp_text, audience_block)
 
                 return {"response": resp_text}
+
 
         print("⚠️ No strict match. Proceeding to vector search.")
 
@@ -752,15 +297,6 @@ async def get_faq(request: Request):
                 if src_ok and user_ok:
                     print("✅ Exact-match override via vector results.")
                     resp_text = format_response(obj)
-
-                    overlay_sentence = build_persona_overlay_sentence(persona_slice)
-                    resp_text = insert_overlay_before_coaching_tip(resp_text, overlay_sentence)
-
-                    resp_text = await finalize_response(
-                        resp_text, row_user, audience_block, persona, persona_block,
-                        raw_q=raw_q,
-                        allow_rewrite=False
-                    )
                     return {"response": resp_text}
 
         print("📦 vector sources:", [o.properties.get("source") for o in objects])
@@ -824,6 +360,7 @@ async def get_faq(request: Request):
 
             ranked.append((score, obj))
 
+
         ranked.sort(key=lambda t: t[0], reverse=True)
         RANK_SCORE_MIN = 0.40
         top = [obj for sc, obj in ranked if sc >= RANK_SCORE_MIN][:3]
@@ -842,79 +379,45 @@ async def get_faq(request: Request):
                 coaching = obj.properties.get("coachingTip", "").strip()
                 blocks.append(f"Answer {i+1}:\n{answer}\n\nCoaching Tip {i+1}: {coaching}")
             combined = "\n\n---\n\n".join(blocks)
+            # ... after you build `combined` from blocks, right before prompt:
             safe_q = sanitize_question_for_disallowed_brands(raw_q, allowed)
 
             prompt = (
                 f"{SYSTEM_PROMPT}\n\n"
                 f"{audience_block}\n\n"
-                f"{persona_block}\n\n"
                 f"Question: {safe_q}\n\n"
                 f"Here are multiple answers and coaching tips from similar questions, contained inside the block below.\n"
                 f"The block is delimited by <<FAQ_BLOCK_START>> and <<FAQ_BLOCK_END>>.\n"
                 f"Use ONLY that block as your source. Do NOT copy or repeat 'Answer 1', 'Answer 2', or 'Coaching Tip 3' literally; rewrite and summarize them instead.\n\n"
                 f"1. Summarize the answers into one helpful response.\n"
-                f"2. Then write ONE Coaching Tip with STRICT LIMITS: max 2 paragraphs, each 1–2 sentences.\n"
-                f"3. Do NOT repeat persona background already stated in the main answer. Focus on advisor behavior.\n"
+                f"2. Then write ONE Coaching Tip. It can be longer than 3 sentences, but it MUST be broken into multiple short paragraphs.\n"
+                f"3. In the Coaching Tip, each paragraph must be 1–3 sentences, and you MUST insert a blank line between paragraphs. Never put the entire Coaching Tip in a single paragraph.\n"
                 f"4. The Coaching Tip should be clear, supportive, and behaviorally insightful, matching the correct audience (advisor or consumer).\n"
                 f"5. ❌ Do NOT include any links, downloads, or tools in the Coaching Tip. Those belong in the answer only.\n\n"
-                f"OUTPUT FORMAT (STRICT): Return ONLY JSON with this schema:\n"
-                f'{{"answer_markdown":"...","coaching_tip_paragraphs":["p1","p2","p3"]}}\n'
-                f"Rules for coaching_tip_paragraphs:\n"
-                f"- MUST be an array of 1 to 3 strings.\n"
-                f"- Each string must be 1 to 3 sentences.\n"
-                f"- Do NOT include blank lines inside a paragraph string.\n"
-                f"- Do NOT include the label '💡 COACHING TIP' inside the paragraphs.\n\n"
                 f"<<FAQ_BLOCK_START>>\n{combined}\n<<FAQ_BLOCK_END>>"
             )
 
             print("Sending prompt to OpenAI.")
             reply = openai.ChatCompletion.create(
-                model="gpt-4o-mini",
+                model="gpt-4",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=900,
-                temperature=0.3,
-                response_format={"type": "json_object"}
+                temperature=0.5
             )
-            
-            print("🧾 OpenAI raw JSON (first 500):", (reply.choices[0].message.content or "")[:500])
-            
-            # ✅ Extract JSON result
-            data = json.loads((reply.choices[0].message.content or "").strip())
 
-            answer_md = (data.get("answer_markdown") or "").strip()
-            if not answer_md:
-                answer_md = "I'm not finding a strong enough match in my knowledge base to answer that clearly."
-            paras = data.get("coaching_tip_paragraphs") or []
-
-            # ✅ Enforce: 1–3 paragraphs, each 1–3 sentences (server-side guard)
-            cleaned_paras = []
-            for p in paras[:3]:
-                p = re.sub(r"\s+", " ", str(p).strip())
-                if not p:
-                    continue
-                sents = [s.strip() for s in re.split(r'(?<=[.!?])\s+', p) if s.strip()]
-                cleaned_paras.append(" ".join(sents[:3]))
-
-            coaching_tip = "\n\n".join(cleaned_paras).strip()
-
-            # ✅ Build final Markdown in your standard format
-            text = answer_md
-            if coaching_tip:
-                text = f"{answer_md}\n\n**💡 COACHING TIP:** {coaching_tip}"
-
-            # ✅ Apply persona injection (does NOT touch exact-match path)
-            text = await finalize_response(
-                text, "both", audience_block, persona, persona_block,
-                raw_q=raw_q
-            )
+            text = (reply.choices[0].message.content or "").strip()
+            print("LLM RAW LEN:", len(text))
+            print("LLM RAW TAIL:", text[-200:])
 
             return {"response": text}
 
         else:
             print("❌ No high-quality vector match. Returning fallback message.")
 
+
     except Exception as e:
         print("Vector-search error:", e)
+
 
     return {
         "response": (
@@ -935,78 +438,21 @@ def format_response(obj):
     answer = obj.properties.get("answer", "").strip()
     tip = obj.properties.get("coachingTip", "").strip()
     if tip:
-        return f"{answer}\n\n**💡 COACHING TIP:** {tip}"
+        return f"{answer}\n\n**Coaching Tip:** {tip}"
     return answer
-
-def enforce_coaching_tip_limits(text: str) -> str:
-    """
-    Enforce strict limits on the Coaching Tip ONLY.
-    Does not modify the main answer.
-    """
-    marker = "**💡 COACHING TIP:**"
-    if marker not in text:
-        return text
-
-    before, after = text.split(marker, 1)
-
-    # Split into paragraphs
-    paragraphs = [p.strip() for p in after.strip().split("\n\n") if p.strip()]
-
-    # Keep at most 2 paragraphs
-    paragraphs = paragraphs[:2]
-
-    cleaned_paragraphs = []
-    for p in paragraphs:
-        # Split into sentences
-        sentences = re.split(r'(?<=[.!?])\s+', p)
-        # Keep at most 2 sentences per paragraph
-        cleaned_paragraphs.append(" ".join(sentences[:2]))
-
-    cleaned_tip = "\n\n".join(cleaned_paragraphs)
-    return f"{before}{marker} {cleaned_tip}"
-
-def format_coaching_tip_paragraphs(text: str) -> str:
-    """
-    Post-process ONLY the Coaching Tip so it's not a single blob.
-    Rules:
-    - Max 3 paragraphs
-    - Each paragraph max 3 sentences
-    - Does NOT modify the main answer
-    """
-    marker = "**💡 COACHING TIP:**"
-    if marker not in text:
-        return text
-
-    before, after = text.split(marker, 1)
-    tip = after.strip()
-
-    # If the tip already has paragraph breaks, keep them and just enforce limits.
-    if "\n\n" in tip:
-        paragraphs = [p.strip() for p in tip.split("\n\n") if p.strip()]
-    else:
-        # Otherwise: split into sentences and rebuild paragraphs (3 sentences each)
-        sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', tip) if s.strip()]
-        paragraphs = []
-        for i in range(0, len(sentences), 3):
-            paragraphs.append(" ".join(sentences[i:i+3]))
-
-    # Enforce max 3 paragraphs
-    paragraphs = paragraphs[:3]
-
-    cleaned = "\n\n".join(paragraphs).strip()
-    return f"{before}{marker} {cleaned}"
 
 
 @app.get("/faq-count")
 def count_faqs():
     try:
-        resp = client.collections.get("FAQ").aggregate.over_all(total_count=True)
-        return {"count": resp.total_count}
+        count = client.collections.get("FAQ").aggregate.over_all(total_count=True).metadata.total_count
+        return {"count": count}
     except Exception as e:
         logger.exception("❌ Error counting FAQs")
         raise HTTPException(status_code=500, detail=str(e))
 
-
+# --- persona-classify (staging) — CLEAN BLOCK ---
+# --- persona-classify (staging) — GUARDED BLOCK ---
 from typing import Dict
 from pydantic import BaseModel
 
@@ -1189,6 +635,8 @@ def persona_classify(req: PersonaRequest):
                          "rationale": "Life stage indicates caregiving for a parent."}
             }
 
+
+
     # 4) Call OpenAI and force JSON output
     try:
         reply = openai.ChatCompletion.create(
@@ -1258,4 +706,3 @@ from fastapi.responses import JSONResponse
 @app.head("/", include_in_schema=False)
 def root():
     return JSONResponse({"status": "WhealthChat API is running"})
-
