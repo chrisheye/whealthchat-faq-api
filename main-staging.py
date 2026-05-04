@@ -281,10 +281,11 @@ async def get_faq(request: Request):
                 f"{SYSTEM_PROMPT}\n\n"
                 f"{audience_block}\n\n"
                 f"Question: {raw_q}\n\n"
-                f"Answer the question directly and clearly. "
                 f"Keep the response practical, conversational, and focused on helping the advisor guide a real client decision. "
-                f"If background context (such as assessment results) is included, do not let it dominate the response or drive a rigid 'fix this first' sequence. "
-                f"Prioritize how the advisor should frame the decision and conversation."
+                f"Answer the question directly based on the question itself, not on any background context. "
+                f"If background context (such as assessment results) is included, use it only if it is clearly necessary and do not reference it explicitly unless asked. "
+                f"Do not assume gaps, deficiencies, or 'low readiness' unless the question specifically asks for that analysis. "
+                f"Prioritize how the advisor should open, frame, and guide the conversation."
             )
 
             reply = openai.ChatCompletion.create(
