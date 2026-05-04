@@ -287,6 +287,7 @@ async def get_faq(request: Request):
                 f"In most cases, ignore assessment results and do not reference them. "
                 f"Do not assume gaps, deficiencies, or 'low readiness' unless explicitly stated in the question. "
                 f"Focus on how the advisor should open, frame, and guide the conversation in general terms."
+                f"For broad or open-ended questions, provide general, flexible guidance that could apply to many clients, rather than tailoring the response to specific background context."
             )
 
             reply = openai.ChatCompletion.create(
