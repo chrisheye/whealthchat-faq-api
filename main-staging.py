@@ -179,6 +179,8 @@ async def rewrite_with_tone(text, audience_block):
 @app.post("/faq")
 async def get_faq(request: Request):
     body = await request.json()
+    has_assessment_context = body.get("hasAssessmentContext", False)
+    assessment_results = body.get("assessmentResults", [])
     raw_q = body.get("query", "").strip()
     if raw_q.startswith("{"):
         return {"response": "⚠️ Invalid query format. Please ask a plain language question."}
