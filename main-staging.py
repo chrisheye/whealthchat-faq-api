@@ -276,9 +276,28 @@ async def get_faq(request: Request):
 
         combined_filt = and_filters(user_filt, tenant_filt)
 
-    if has_assessment_context:
-        objects = []
-    else:
+        if has_assessment_context:
+            context_prompt = (
+                f"{SYSTEM_PROMPT}\n\n"
+                f"{audience_block}\n\n"
+                f"Question: {raw_q}\n\n"
+                f"The advisor has provided assessment context in the question. "
+                f"Use that assessment context as the primary source. "
+                f"Do not rely on generic FAQ content. "
+                f"Do not introduce unrelated topics such as long-term care, Medicare, caregiving, or health costs unless explicitly asked. "
+                f"Focus on the assessment results, the identified gaps, and how the advisor should discuss them supportively."
+            )
+
+            reply = openai.ChatCompletion.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": context_prompt}],
+                max_tokens=900,
+                temperature=0.3
+            )
+
+            text = (reply.choices[0].message.content or "").strip()
+            return {"response": text}
+
         vec_res = collection.query.near_text(
             query=raw_q,
             filters=combined_filt,
@@ -286,6 +305,7 @@ async def get_faq(request: Request):
             return_properties=["question", "answer", "coachingTip", "user", "source"],
             limit=3
         )
+
         objects = vec_res.objects
         
         # 🔒 Exact-match override (case/punctuation tolerant)
