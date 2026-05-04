@@ -282,10 +282,10 @@ async def get_faq(request: Request):
                 f"{audience_block}\n\n"
                 f"Question: {raw_q}\n\n"
                 f"The advisor has provided assessment context in the question. "
-                f"Use that assessment context as the primary source. "
+                f"Use the assessment context as helpful background, but do not let it dominate the response. "
                 f"Do not rely on generic FAQ content. "
                 f"Do not introduce unrelated topics such as long-term care, Medicare, caregiving, or health costs unless explicitly asked. "
-                f"Focus on the assessment results, the identified gaps, and how the advisor should discuss them supportively."
+                f"Provide general guidance first, and weave in the most relevant assessment insights only where they naturally support the advice."
             )
 
             reply = openai.ChatCompletion.create(
