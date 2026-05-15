@@ -276,16 +276,6 @@ async def get_faq(request: Request):
 
         combined_filt = and_filters(user_filt, tenant_filt)
 
-            reply = openai.ChatCompletion.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": context_prompt}],
-                max_tokens=900,
-                temperature=0.3
-            )
-
-            text = (reply.choices[0].message.content or "").strip()
-            return {"response": text}
-
         vec_res = collection.query.near_text(
             query=raw_q,
             filters=combined_filt,
